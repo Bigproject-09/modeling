@@ -1,6 +1,7 @@
 import os
 import glob
 from document_parsing import UniversalParser
+from section import SectionSplitter, verify_sections
 
 def main():
     # ---------------------------------------------------------
@@ -11,6 +12,8 @@ def main():
     
     # 결과물을 저장할 출력 폴더
     OUTPUT_FOLDER = "data/output"
+    # 섹션 분리 결과 저장 폴더
+    SECTIONS_FOLDER = "data/sections"
     
     # ---------------------------------------------------------
     # [준비] 폴더 생성 및 파서 초기화
@@ -20,6 +23,9 @@ def main():
         os.makedirs(INPUT_FOLDER, exist_ok=True)
         return
 
+    # 섹션 폴더 생성
+    os.makedirs(SECTIONS_FOLDER, exist_ok=True)
+    
     # 파서 객체 생성
     parser = UniversalParser(output_dir=OUTPUT_FOLDER)
 
@@ -43,6 +49,16 @@ def main():
             result_path = parser.process_file(file_path)
             if result_path:
                 print(f"  [성공] {os.path.basename(file_path)} -> {os.path.basename(result_path)}")
+                # 파싱된 JSON을 섹션별로 분리
+                # 섹션 결과 파일명: 원본파일명 기반으로 생성
+                base_name = os.path.splitext(os.path.basename(file_path))[0]
+                sections_output_path = os.path.join(SECTIONS_FOLDER, f"{base_name}_sections.json")
+
+                splitter = SectionSplitter(result_path)
+                sections = splitter.save_sections(sections_output_path, format='json')
+
+                # (선택) 검증 출력
+                # verify_sections(sections, verbose=True)
         except Exception as e:
             print(f"  [실패] {os.path.basename(file_path)}: {str(e)}")
 
