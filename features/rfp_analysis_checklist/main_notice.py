@@ -1,6 +1,16 @@
 import os
 import glob
 import json
+import sys
+# ---------------------------------------------------------
+# [경로 설정] 현재 파일 위치 기준으로 프로젝트 루트(MODELING) 찾기
+# ---------------------------------------------------------
+current_dir = os.path.dirname(os.path.abspath(__file__))  # .../rfp_analysis_checklist
+parent_dir = os.path.dirname(current_dir)                 # .../features
+project_root = os.path.dirname(parent_dir)                # .../MODELING (루트)
+
+# 시스템 경로에 프로젝트 루트 추가 (그래야 document_parsing, section을 찾음)
+sys.path.append(project_root)
 from dotenv import load_dotenv
 from document_parsing import parse_docx_to_blocks, extract_text_from_pdf
 from section import SectionSplitter, verify_sections
