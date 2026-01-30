@@ -124,7 +124,7 @@ def analyze_node(state: GraphState) -> dict:
         
         print("[PM 노드] 분석 시작 (Gemini-2.5)...")
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.5 flash",
             contents=f"다음 제안요청서(RFP)를 분석해라:\n\n{rfp_text[:70000]}", # 길이 제한 안전장치
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_INSTRUCTION_ROUTER,
