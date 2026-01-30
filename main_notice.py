@@ -33,7 +33,7 @@ def classify_file(filename):
     return 'notice'
 
 def main():
-    INPUT_FOLDER = "data/input" 
+    INPUT_FOLDER = "data/notice_input" 
     OUTPUT_FOLDER = "data/parsing"
     SECTIONS_FOLDER = "data/sections"
     ANALYSIS_FOLDER = "data/analysis"

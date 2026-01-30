@@ -14,7 +14,7 @@ load_dotenv()
 # =========================================================
 # [설정] 파일 경로
 # =========================================================
-RFP_INPUT_DIR = os.path.join("data", "lang_graph")
+RFP_INPUT_DIR = os.path.join("data", "ppt_input")
 
 # =========================================================
 # 시스템 프롬프트 (내용은 기존과 동일합니다)
@@ -166,8 +166,8 @@ if __name__ == "__main__":
         if "analyzed_json" in result_update:
             summary = result_update['analyzed_json'].get('project_summary', {})
             print("\n[성공] 분석 결과가 나왔습니다!")
-            print(f"📌 과제명: {summary.get('title')}")
-            print(f"📌 키워드: {summary.get('keywords')}")
+            print(f"과제명: {summary.get('title')}")
+            print(f"키워드: {summary.get('keywords')}")
             
             # 파일로도 한번 저장해볼까요? (확인용)
             with open("debug_analysis_result.json", "w", encoding="utf-8") as f:
