@@ -171,14 +171,16 @@ def main():
         print("=" * 60)
         
         try:
+            # JSON으로 받기
             checklist_result = eligibility_checklist(
                 chunks=checklist_chunks,
                 source=", ".join(file_classification['notice'] + file_classification['eligibility']),
             )
             
-            checklist_path = os.path.join(ANALYSIS_FOLDER, "checklist.md")
+            # JSON 파일로 저장
+            checklist_path = os.path.join(ANALYSIS_FOLDER, "checklist.json")
             with open(checklist_path, 'w', encoding='utf-8') as f:
-                f.write(checklist_result)
+                json.dump(checklist_result, f, ensure_ascii=False, indent=2)
             print(f"[3단계] 체크리스트 생성 완료 -> {os.path.basename(checklist_path)}")
             
         except Exception as e:
@@ -199,14 +201,16 @@ def main():
         print("=" * 60)
         
         try:
+            # JSON으로 받기
             analysis_result = deep_analysis(
                 chunks=analysis_chunks,
                 source=", ".join(file_classification['notice'] + file_classification['rfp']),
             )
             
-            analysis_path = os.path.join(ANALYSIS_FOLDER, "analysis.md")
+            # JSON 파일로 저장
+            analysis_path = os.path.join(ANALYSIS_FOLDER, "analysis.json")
             with open(analysis_path, 'w', encoding='utf-8') as f:
-                f.write(analysis_result)
+                json.dump(analysis_result, f, ensure_ascii=False, indent=2)
             print(f"[4단계] 심층분석 완료 -> {os.path.basename(analysis_path)}")
             
         except Exception as e:
@@ -223,9 +227,9 @@ def main():
     print(f"  - 섹션 분리: {SECTIONS_FOLDER}/")
     print(f"  - 분석 결과: {ANALYSIS_FOLDER}/")
     if checklist_chunks:
-        print(f"    · checklist.md (공고 + 자격요건)")
+        print(f"    · checklist.json (공고 + 자격요건)")
     if analysis_chunks:
-        print(f"    · analysis.md (공고 + RFP)")
+        print(f"    · analysis.json (공고 + RFP)")
     print("=" * 60)
 
 if __name__ == "__main__":

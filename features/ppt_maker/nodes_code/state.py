@@ -8,6 +8,7 @@ class SlideState(TypedDict):
     title: str                # 슬라이드 제목
     content: str              # 슬라이드 내용 (글머리 기호 등)
     image_request: str        # 그림 프롬프트 (없으면 빈 문자열)
+    image_position: str       # 그림 좌표
     image_path: str           # 생성된 이미지 파일 경로 (초기엔 비어있음)
 
 # 2. 전체 그래프 상태(Cart) 정의
