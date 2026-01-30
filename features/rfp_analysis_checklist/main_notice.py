@@ -43,10 +43,10 @@ def classify_file(filename):
     return 'notice'
 
 def main():
-    INPUT_FOLDER = "data/notice_input" 
-    OUTPUT_FOLDER = "data/parsing"
-    SECTIONS_FOLDER = "data/sections"
-    ANALYSIS_FOLDER = "data/analysis"
+    INPUT_FOLDER = os.path.join(project_root, "data", "notice_input")
+    OUTPUT_FOLDER = os.path.join(project_root, "data", "parsing")
+    SECTIONS_FOLDER = os.path.join(project_root, "data", "sections")
+    ANALYSIS_FOLDER = os.path.join(project_root, "data", "analysis")
     
     if not os.path.exists(INPUT_FOLDER):
         print(f"[알림] 입력 폴더 '{INPUT_FOLDER}'가 없습니다.")
@@ -162,7 +162,7 @@ def main():
 
     # 3단계: 체크리스트 생성 (공고 + 자격요건)
     checklist_chunks = notice_chunks + eligibility_chunks
-    
+
     if checklist_chunks:
         print("\n" + "=" * 60)
         print(f"[3단계] 자격요건 체크리스트 생성")
