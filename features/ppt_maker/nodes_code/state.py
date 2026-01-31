@@ -2,14 +2,19 @@ import operator
 from typing import TypedDict, List, Annotated, Any
 
 # 1. 슬라이드 1장(Page)에 대한 정의
+class SubtitleContent(TypedDict):
+    subtitle: str       # 부제목 (예: "사업 배경", "사업 목적")
+    content: str        # 해당 부제목에 대한 내용
+
 class SlideState(TypedDict):
     page_number: int          # 페이지 번호 (나중에 정렬용)
     section: str              # 어느 파트인지 (예: 연구 목표)
     title: str                # 슬라이드 제목
-    content: str              # 슬라이드 내용 (글머리 기호 등)
+    items: List[SubtitleContent]
     image_request: str        # 그림 프롬프트 (없으면 빈 문자열)
     image_position: str       # 그림 좌표
     image_path: str           # 생성된 이미지 파일 경로 (초기엔 비어있음)
+    
 
 # 2. 전체 그래프 상태(Cart) 정의
 class GraphState(TypedDict):
