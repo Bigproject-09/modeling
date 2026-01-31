@@ -1,0 +1,265 @@
+================================================================================
+4개 노드 테스트 보고서
+================================================================================
+
+[과제 정보]
+제목: 차세대 해양·극지 환경 및 생태계 기후예측시스템 개발
+부제: 해당 없음
+수행기간: 5년 (2025~2029년)
+예산: RFP에 총 정부지원금 규모가 명시되지 않음. 1차년도 정부지원금은 20억원 (해양-빙권 모델 12억원, 생태계 모델 8억원).
+키워드: 해양, 극지, 기후예측, 생태계, 고해상도, 머신러닝, 자료동화
+
+[생성 슬라이드]
+총 14장
+
+  기관 소개: 3장
+  연구 내용: 4장
+  연구 목표: 3장
+  추진 계획: 4장
+
+[슬라이드 상세]
+
+1. [기관 소개] 제안 기관 개요 및 총괄 역할
+   내용:
+     • 기관명: 서울대학교 (주관연구개발기관)
+     • 설립: 1946년 (국내 최고 국립대학으로서의 공공성 및 전문성)
+     • 총 참여연구원: 48명 (박사급 연구원 30명 이상)
+     • 본 과제 총괄 역할:
+       • 차세대 해양·극지 기후예측시스템 통합 개발 및 운영
+       • 전지구 1/10도 해양-빙권 결합모델 구축 및 최적화
+       • 딥러닝 기반 편향보정 및 앙상블 예측 시스템 개발
+   이미지 프롬프트: modern university research building exterior with a clear sky, professional and grand scale, clean corporate style
+
+2. [기관 소개] 핵심 연구 역량 및 선행 실적
+   내용:
+     • 고해상도 해양모델링 (서울대 박○○ 교수팀):
+       • 2019-2023 해수부 과제 책임 (총 35억 원 규모)
+       • 1/10도 지역 해양모델 구축 및 계절 예측 정확도 검증
+       • 한국 연안 수온 예측 RMSE 0.7℃ 달성 (기존 대비 42% 개선)
+       • SCI 논문 8편 (Journal of Climate 2편 포함)
+     • 극지 해빙-해양 상호작용 (극지연구소 김○○ 박사팀):
+       • 2020-2024 남극 해빙-해양 관측 및 모델링 연구 참여
+       • MITgcm 해빙역학 모듈 결합 및 검증
+       • Nature Geoscience 1편 포함 SCI 논문 5편
+     • 해양생태계 모델링 및 자료동화 (KIOST 이○○ 박사팀):
+       • 2021-2023 북극 해양생태계 장기 변동성 연구 참여
+       • 식물플랑크톤 위성관측 분석 및 CMIP6 생태계 모델 평가
+       • Global Biogeochemical Cycles 논문 게재
+     • 종합: 본 과제 핵심 요소기술(고해상도 모델링, 극지 빙권 모사, 생태계 모델 결합) 검증 및 통합 역량 확보
+   이미지 프롬프트: abstract visualization of scientific data, research breakthroughs, and publications, with interconnected nodes representing integration, professional infographic style
+
+3. [기관 소개] 연구 인프라 및 기관별 협력 체계
+   내용:
+     • 국가 슈퍼컴퓨터 인프라 활용:
+       • 누리온 5호기 (128 페타플롭스) 활용, 전지구 고해상도 모델링 지원
+       • 딥러닝 편향보정용 GPU 서버 구축 (3억 원 미만)
+     • 기관별 전문성 기반 역할 분담:
+       • 서울대학교 (주관): 통합 시스템 개발 및 총괄, 고성능컴퓨팅 운영
+       • 극지연구소 (공동): 극지 현장 관측 및 해빙 모델 고도화, 위성 해빙 자료동화
+       • 한국해양과학기술원 (공동): 해양생태계 모델링 및 탄소순환, 위성 엽록소 자료동화
+       • 국립수산과학원 (위탁): 수산자원 예측 모델 연계 및 어업인 시범서비스 실증
+     • 총 참여연구원: 48명 (해양·극지·기후·생태계 분야 최고 전문가 집단)
+   이미지 프롬프트: modern data center with rows of supercomputers, or a network diagram illustrating inter-institutional collaboration, high-tech and clean environment
+
+4. [연구 내용] 차세대 해양·극지 환경 및 생태계 기후예측시스템 전체 구조   
+   내용:
+     •  **전지구 고해상도 해양-빙권-생태계 결합 모델 기반 기후예측 시스템**
+     •  **핵심 모듈 구성**
+         -  **해양-빙권 결합 모델**: MOM6 (해양), CICE6 (해빙) 기반, NUOPC 프레임워크로 양방향 결합
+         -  **해양 생태계 모델**: 확장형 NPZD 모델 (탄소순환 포함)
+         -  **자료동화 모듈**: 위성 엽록소 자료동화 (앙상블 칼만필터)
+         -  **고성능 컴퓨팅 환경**: GPU 클러스터 기반 모델 가속화 및 대규모 실험 지원
+         -  **결과 분석 및 검증**: 1980-2020년 Hindcast 실험 수행 및 관측자료 비교 검증
+   이미지 프롬프트: High-level system architecture diagram for ocean-polar climate prediction, showing coupled ocean-ice model, ecosystem model, data assimilation, HPC infrastructure, and output/visualization modules, with clear arrows indicating interactions, professional scientific illustration style.
+
+5. [연구 내용] 해양-빙권 결합 모델 및 생태계 모델 상세 구조
+   내용:
+     •  **고해상도 해양 모델 (MOM6)**
+         -  전지구 1/10도 수평 해상도 (약 10km), 연직 75층 구조
+         -  중규모 에디 명시적 계산을 통한 열/염분 수송 정밀 재현
+         -  GEBCO 2023 지형 자료 및 ERA5 대기 강제력 (열/담수/운동량 플럭스) 활용
+     •  **극지 해빙 모델 (CICE6)**
+         -  탄성-점소성 역학, 다층 열역학, 적설 과정 포함
+         -  북극/남극 해빙 특성 고려한 매개변수 최적화
+     •  **모델 결합**: NUOPC 프레임워크 기반 1시간 간격 양방향 상호작용
+     •  **확장형 해양 생태계 모델 (NPZD)**
+         -  영양염-식물플랑크톤-동물플랑크톤-쇄설물 구조에 용존유기물 및 탄소순환 모듈 추가
+         -  대기-해양 CO2 플럭스 계산 및 생물/용해도 펌프 효과 고려
+   이미지 프롬프트: Detailed diagram of coupled MOM6 and CICE6 models, showing their internal components and the NUOPC coupling framework, alongside a separate diagram illustrating the extended NPZD ecosystem model with carbon cycle components, scientific model visualization.
+
+6. [연구 내용] 자료동화 및 머신러닝 기반 편향 보정
+   내용:
+     •  **위성 엽록소 자료동화 (EnKF)**
+         -  NASA MODIS-Aqua, NOAA VIIRS Level-3 일별 합성물 활용
+         -  앙상블 칼만필터 (EnKF) 기법으로 모델 표층 엽록소 농도 조정
+         -  구름 피복 고려 7일 이동평균 및 3일 동화 사이클 적용
+         -  북서태평양 및 베링해 생태계 검증을 통한 예측 정확도 향상
+     •  **머신러닝 기반 편향 보정 (향후 연차 계획)**
+         -  LSTM, Transformer 등 딥러닝 기법을 활용한 모델 예측 오차 분석
+         -  모델 예측 결과와 관측 자료 간의 체계적 오차 (편향) 학습 및 보정
+         -  장기 기후 예측의 신뢰도 및 정확도 향상에 기여
+   이미지 프롬프트: Data assimilation cycle diagram showing satellite chlorophyll data input, EnKF process, and model state update, with an additional component illustrating a machine learning model (LSTM/Transformer) for bias correction, scientific data flow and ML integration.
+
+7. [연구 내용] 고성능 컴퓨팅 환경 및 1차년도 데이터 흐름
+   내용:
+     •  **고성능 컴퓨팅 인프라 구축**
+         -  NVIDIA A100 GPU 기반 500노드급 클러스터 활용 (국가 슈퍼컴퓨터 연계)
+         -  MOM6, CICE6 모델의 GPU 포팅 및 병렬화 최적화
+         -  100년 적분 12일 이내 완료 목표 (앙상블 예측 및 민감도 실험 지원)
+     •  **1차년도 데이터 흐름 (Hindcast 실험)**
+         1.  **입력 자료**: GEBCO 2023 (고해상도 지형), ERA5 (대기 강제력, 1시간 간격)
+         2.  **모델 실행**: MOM6-CICE6 결합 모델 (NUOPC) → NPZD 생태계 모델
+         3.  **자료동화**: 위성 엽록소 자료동화 (EnKF)를 통한 모델 상태 조정
+         4.  **출력 및 검증**: 1980-2020년 41년간 Hindcast 결과 생성 및 관측자료 비교 검증
+             -  **검증 자료**: Argo, AVISO, NSIDC, IAP, in-situ 관측자료
+   이미지 프롬프트: High-performance computing cluster diagram with GPU nodes, showing data input (GEBCO, ERA5), model execution (MOM6-CICE6, NPZD), data assimilation, and output/verification stages, illustrating the overall data pipeline for hindcast experiments, modern HPC infographic style.
+
+8. [연구 목표] 연구개발 최종 목표
+   내용:
+     • 최종 목표: 차세대 해양·극지 환경 및 생태계 기후예측시스템 개발을 통해 계절~10년 규모 예측 정확도 세계 3위 수준 달성 및 국가 기후 대응력 확보
+       - 공간해상도: 전지구 1/10도 해양-빙권 결합모델 구축 (기존 국내 모델 1/4도 대비 4배 향상)
+       - 예측 정확도: 기존 대비 30% 이상 개선 (RMSE 기준)
+       - 10년 예측 신뢰도: 30% 이상 향상 (딥러닝 기반 편향 보정 및 앙상블 시스템 적용)
+       - 자료동화 지연시간: 6시간 이내 준실시간 처리
+     • 목표 달성 시 기대효과
+       - 수산자원 변동, 해빙 범위, 탄소흡수 능력 정량 예측 및 정보 제공
+       - 국가 기후변화 대응 전략 수립 및 관련 산업 경쟁력 강화 기여
+   이미지 프롬프트: futuristic global climate prediction system interface showing ocean, ice, and ecosystem data, with a target icon indicating world top 3 achievement, professional tech style
+
+9. [연구 목표] 단계별 성과 지표 (KPI)
+   내용:
+     • 1단계 목표 (1~12개월): 핵심 모델 기반 구축
+       - 1/10도 고해상도 전지구 해양-빙권 결합모델 초기 버전 구축 완료
+       - 해양 생태계 모듈(NPZD+탄소순환) 개발 및 해양-빙권 모델과 초기 연동
+       - 기초 예측 정확도 (RMSE) 기존 대비 10% 개선 달성
+       - 자료동화 시스템 프로토타입 개발 (지연시간 24시간 이내)
+     • 2단계 목표 (13~24개월): 예측 시스템 고도화 및 통합
+       - 해양-빙권-생태계 통합 모델 고도화 및 안정화
+       - 딥러닝 기반 편향 보정 및 앙상블 예측 시스템 개발 착수
+       - 예측 정확도 (RMSE) 기존 대비 20% 개선 달성
+       - 10년 예측 신뢰도 15% 향상 (중간 목표)
+       - 자료동화 지연시간 12시간 이내 단축
+     • 3단계 목표 (25~36개월): 최종 목표 달성 및 현업 시스템 구축
+       - 계절~10년 규모 예측 정확도 세계 3위 수준 달성 (기존 대비 30% 개선)
+       - 10년 예측 신뢰도 30% 향상 달성
+       - 자료동화 지연시간 6시간 이내 달성
+       - 현업 예측 시스템 구축 및 웹 기반 정보 제공 플랫폼 개발 완료
+   이미지 프롬프트: three-stage progress chart with distinct milestones for each year, showing increasing accuracy and decreasing latency, professional infographic with growth arrow and data points
+
+10. [연구 목표] 핵심 성과물
+   내용:
+     • 기술적 성과물
+       1. 1/10도 고해상도 전지구 해양-빙권 결합모델 (SW 등록)
+       2. 해양 생태계(NPZD+탄소순환) 모듈 (SW 등록)
+       3. 딥러닝 기반 기후예측 편향 보정 및 앙상블 기술 (특허 출원)
+       4. 준실시간 자료동화 시스템 (SW 등록)
+       5. 차세대 해양·극지 기후예측 현업 시스템 (SW 등록)
+       6. 웹 기반 기후 정보 제공 플랫폼 (SW 등록)
+     • 학술 및 지식재산 성과물
+       - SCI급 논문 5편 이상 (주저자 2편 이상)
+       - 국내외 학술대회 발표 10회 이상
+       - 기술 이전 또는 사업화 1건 이상
+       - 고해상도 해양·극지 예측 데이터셋 (DB 구축)
+   이미지 프롬프트: collection of deliverables icons including patent document, software interface, research paper, and database symbol, clean icon set with a focus on marine and polar themes
+
+11. [추진 계획] 연구개발 추진 체계
+   내용:
+     • 총괄 책임: 박○○ 박사 (서울대학교)
+     • 총 참여연구원: 48명
+     • 주관기관 (서울대학교): 통합 기후예측시스템 개발 및 총괄 (박○○ 외 22명)
+       - 전지구 1/10도 해양-빙권 결합모델 구축 및 최적화
+       - 딥러닝 기반 편향보정 및 앙상블 예측 시스템 개발
+       - 현업 예측시스템 구축 및 웹 플랫폼 개발, 고성능컴퓨팅 인프라 운영
+       - 전체 시스템 통합 및 성능 검증
+     • 공동기관1 (극지연구소): 극지 해빙-해양 관측 및 모델 검증 (김○○ 외 12명)
+       - 남북극 현장 관측자료 수집 및 품질관리 (장보고/다산기지 활용)
+       - 해빙 역학·열역학 모델 고도화, 극지 해양-빙권 상호작용 모사 및 검증
+       - 위성 해빙 자료 동화 알고리즘 개발
+     • 공동기관2 (한국해양과학기술원(KIOST)): 해양생태계 모델링 및 자료동화 (이○○ 외 10명)
+       - NPZD 생태계 모델 개발 및 결합, 해양 탄소순환 모듈 구현
+       - 위성 엽록소 자료 동화 시스템 구축, 북서태평양 및 베링해 생태계 검증 (이어도 기지 활용)
+     • 위탁기관1 (국립수산과학원): 수산자원 예측 모델 연계 및 실증 (최○○ 외 4명)
+       - 주요 어종 어장 예측 정보 생산, 어업인 대상 시범서비스 운영 및 평가
+       - 수산자원 평가 모델과 예측시스템 연계
+     • 기관 간 협력 방안:
+       - 분기별 전체 회의, 월별 분야별 회의 개최
+       - Git/Slack 기반 실시간 정보 공유 및 클라우드 스토리지(50TB) 중앙 관리
+   이미지 프롬프트: organizational chart diagram with hierarchical structure, professional business infographic style, blue and white color scheme, showing Seoul National University as lead, Korea Polar Research Institute, KIOST, National Institute of Fisheries Science as partners
+
+12. [추진 계획] 연구개발 추진 전략 및 방법
+   내용:
+     • 정보 수집 및 국제 협력 전략:
+       - IPCC, WMO, CMIP6, 국제학술지(Nature Climate Change 등) 최신 동향 모니터링
+       - 해외 선도기관(NOAA/GFDL, UK Met Office, ECMWF, JAMSTEC) 기술보고서 분기별 분석
+       - CLIVAR, WCRP 극지기후 분과 참여, Nansen Center와 북극 해빙 예측 공동연구 MOU 체결
+     • 전문가 확보 방안:
+       - 국내: 서울대·연세대·부산대 기후모델링, 극지연구소 빙권, KIOST 해양생태, 국립수산과학원 어장 전문가 풀 활용
+       - 자문위원회 구성 및 분기별 자문회의 개최
+       - 해외: 미국 MIT 해양모델링 전문가 초청(3~6개월), 영국 BAS 남극 해빙 전문가와 월 1회 화상회의
+     • 연구개발 방법론:
+       - 3단계 모델 개발 접근법:
+         1. 1단계 (이상화된 실험): 모델 역학 타당성 검증 (베타평면 에디 생성, 1차원 빙-해양 결합)
+         2. 2단계 (지역 모델): 고해상도 재현성 검증 (북서태평양, 베링해, 웨델해), 매개변수 조율
+         3. 3단계 (전지구 통합 시스템): 장기 적분 안정성 및 기후 표류 억제 확인
+       - 예측 시스템 파이프라인 자동화:
+         • 초기화: 매달 1일 00UTC 최신 관측자료(Argo, 위성, 부이) 동화하여 초기장 생성
+         • 예측: 30개 앙상블 멤버로 12개월 적분 (bred vector 초기 섭동)
+         • 후처리: 다중모델 앙상블 + 딥러닝 편향보정 결합
+       - 딥러닝 모델 개발:
+         • LSTM, Transformer 구조 비교 테스트
+         • 학습 데이터: hindcast 41년(1980~2020년) 예측-관측 쌍
+         • 목표: raw 모델 출력 대비 예측 오차 30% 감소
+   이미지 프롬프트: workflow diagram showing the 3-stage model development and the prediction system pipeline (Initialization -> Prediction -> Post-processing), professional and clear infographic style, blue and green color scheme
+
+13. [추진 계획] 단계별 연구개발 추진 일정 및 1차년도 마일스톤
+   내용:
+     • 총괄 연구기간: 5년 (2025년 ~ 2029년)
+     • 1단계 (1~2차년도: 2025년~2026년): 핵심 모델 개발 및 기반 구축
+       - 목표: 고해상도 해양-빙권 모델 구축, 딥러닝 편향보정 프로토타입 개발
+       - 주요 성과: 전지구 1/10도 해양 모델 스핀업 완료, 극지 해빙 모델 고도화, NPZD 생태계 모델 초기 버전 개발, 딥러닝 편향보정 모델(CNN) 훈련 및 검증
+       - 1차년도 진도점검 마일스톤 (2026년 11월 30일):
+         • M1: 1/10도 전지구 해양 모델 구축 및 스핀업 완료 (책임: 홍길동)
+           - 세부: 고해상도 해양 모델 초기화 및 50년 스핀업 실행 (2026.06.30)
+           - 세부: 해양-대기 결합 시험 및 안정성 검증 (2026.10.30)
+           - 성과: 1/10도 해양 모델 구성 파일, 50년 스핀업 데이터, 관측 비교 검증 보고서 (RMSE 20% 이내)
+         • M2: 딥러닝 편향보정 알고리즘 프로토타입 개발 (책임: 박민수)
+           - 세부: CNN 기반 편향보정 모델 훈련 및 검증 (2026.09.30)
+           - 성과: 훈련 데이터셋, CNN 모델 소스코드, 검증 기간 성능 평가 보고서 (RMSE 30% 감소, 상관계수 0.7 이상, 편향 50% 감소)
+     • 2단계 (3~4차년도: 2027년~2028년): 통합 시스템 고도화 및 테스트베드 실증
+       - 목표: 해양-극지-생태계 통합 예측 시스템 구축, 현업 시스템 연동 및 시범 서비스
+       - 주요 성과: 전지구 결합 모델 안정화, 자료동화 시스템 고도화, 수산자원 예측 모델 연계, 어장 예측 시범 서비스 (2028년), 북극 해빙 예측 시범 서비스
+     • 3단계 (5차년도: 2029년): 최종 시스템 완성 및 성과 확산
+       - 목표: 예측 시스템 최종 검증 및 성능 최적화, 국제 비교 참여, 성과 확산
+       - 주요 성과: 차세대 기후예측시스템 최종 버전 완성, 국제 해빙 예측 상호비교 프로젝트 참여, SCI 논문 연평균 6편 이상 게재, K-MOOC 콘텐츠 제작
+   이미지 프롬프트: detailed gantt chart timeline visualization for a 5-year project (2025-2029), showing 3 main phases and specific milestones for the first year, professional project management style with clear color coding for different phases, blue, green, and yellow colors
+
+14. [추진 계획] 테스트베드 구축 및 실증 & 안전/보안 조치 계획
+   내용:
+     • 테스트베드 구축 및 실증:
+       - 어장 예측 시범 서비스 (2028년, 3차년도부터):
+         • 국립수산과학원 협력, 어업인 대상 오징어/고등어 1~3개월 전망 웹/모바일 앱 제공
+         • 실제 조업 결과와 비교 평가, 피드백 반영하여 정보 표출 및 예측 내용 개선
+       - 북극 해빙 예측 시범 서비스 (2028년, 3차년도부터):
+         • 해양수산부 북극항로 사업단 연계, 선박 운항 계획 수립 지원
+         • 여름철(6~9월) 북극해 항로 해빙 농도 주간 예측 제공, 위성관측과 비교 검증
+         • 2029년(4차년도) 국제 해빙 예측 상호비교 프로젝트(SIPN) 참여
+       - 기술 홍보 및 확산: 연 1회 국제 학술대회 발표, SCI 논문 연평균 6편 이상 게재, 국내 학회 특별세션 조직, K-MOOC 온라인 공개강좌 제작
+     • 안전 조치 이행 계획:
+       - 연구원 안전교육 연 2회, 연구실 배상책임보험 및 상해보험 의무 가입
+       - 슈퍼컴퓨터/데이터센터 화재/전기 안전점검 분기별 실시, 항온항습/냉각수 모니터링
+       - 해양 현장 관측 시 선박 안전 수칙 준수, 구명조끼 착용, 기상 악화 시 조사 중단
+       - 극지 현장 연구 시 저체온증 예방 교육, 위성통신 장비 휴대
+       - 연구 자료 일일/3개월 백업, 소화기/비상구 점검, 연 1회 화재 대피 훈련
+     • 보안 조치 이행 계획:
+       - 슈퍼컴퓨터 이중 인증, 방화벽/IDS, VPN 통한 외부 접속
+       - 군사 관련 민감 정보 별도 암호화/격리 저장, 접근 로그 기록
+       - 특허 출원 대상 기술 출원 전 공개 금지, 비밀유지서약서 징구
+       - 연구윤리 및 보안교육 연 1회 이수, 퇴직 후 3년간 비밀유지 의무
+       - 국제 공동연구 시 사전 보안심사, MOU에 데이터 사용 제한 명시
+       - 클라우드 국내 서버 우선, 해외 서버 사용 시 암호화 키 국내 관리
+       - 연구 종료 후 데이터 10년간 보존, 공개 가능 데이터 DataON 등록
+       - 보안 사고 발생 시 즉시 보고 및 72시간 내 사고조사 보고서 제출
+       - 보안 등급: 일반과제 (특허 출원 대상 기술은 제한적 관리)
+   이미지 프롬프트: infographic combining elements of a testbed demonstration (e.g., web/mobile app interface, ship on polar route, satellite imagery) and security/safety icons (e.g., shield, lock, hard hat, fire extinguisher, data backup symbol), professional and clean style, blue, green, and grey colors
+
+
