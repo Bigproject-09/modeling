@@ -4,4 +4,4 @@ __pycache__/
 .venv/
 data/
 debug_analysis_result.json
-test_outputs/
+features/ppt_maker/nodes_code/test_outputs/
