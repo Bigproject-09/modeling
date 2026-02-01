@@ -17,8 +17,8 @@ from features.ppt_maker.nodes_code.outcome_node import outcome_node
 from features.ppt_maker.nodes_code.utilization_node import utilization_node
 # from features.ppt_maker.nodes_code.agency_intro_node import agency_intro_node
 # from features.ppt_maker.nodes_code.image_generation_node import image_generation_node
-# from features.ppt_maker.nodes_code.sort_node import sort_node
-# from features.ppt_maker.nodes_code.ppt_generation_node import ppt_generation_node
+from features.ppt_maker.nodes_code.sort_node import sort_node
+from features.ppt_maker.nodes_code.ppt_generation_node import ppt_generation_node
 
 load_dotenv()
 
@@ -83,9 +83,6 @@ def build_graph():
     
     # PPT 생성 -> 종료
     # workflow.add_edge("generate_ppt", END)
-    
-    # 임시: overview만 테스트하는 경우
-    workflow.add_edge("overview", END)
     
     # 4. 그래프 컴파일
     app = workflow.compile()

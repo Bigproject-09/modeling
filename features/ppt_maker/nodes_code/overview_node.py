@@ -58,13 +58,6 @@ SYSTEM_INSTRUCTION_OVERVIEW = """
   "image_position": "top-right | bottom-right | left | right | center (이미지 있을 때만)"
 }
 
-[image_position 설명]
-- "top-right": 우측 상단에 작게 배치 (로고, 아이콘 등)
-- "bottom-right": 우측 하단에 배치
-- "left": 좌측 절반 차지 (텍스트는 우측)
-- "right": 우측 절반 차지 (텍스트는 좌측) 
-- "center": 중앙 하단에 크게 배치
-
 [items 작성 예시]
 각 item은 subtitle과 content의 쌍으로 구성됩니다:
 
@@ -86,6 +79,45 @@ items: [
     "content": "• [RFP 요구사항 1]\n• [RFP 요구사항 2]\n• [RFP 요구사항 3]"
   }
 ]
+
+[이미지 생성 전략 - 개요 섹션]
+개요 섹션에서는 **전체 시스템 구조**를 한눈에 보여주는 이미지가 효과적이다.
+
+**이미지가 필요한 경우:**
+- RFP에 시스템 구성, 기술 아키텍처, 플랫폼 구조 등이 언급된 경우
+- 개발 대상이 하드웨어, 소프트웨어, 통합 시스템 등 시각화 가능한 형태인 경우
+- 여러 구성 요소가 상호작용하는 복합 시스템인 경우
+
+**권장 이미지 유형 (우선순위):**
+
+1순위: 시스템 아키텍처 다이어그램
+   - 전체 시스템의 블록 다이어그램 형태
+   - 주요 모듈/컴포넌트와 그 연결 관계  
+   - 데이터/신호 흐름을 화살표로 표시
+   - 프롬프트 예시: "Professional system architecture diagram showing [시스템명] with main components: [컴포넌트1], [컴포넌트2], [컴포넌트3]. Clean block diagram with labeled boxes connected by arrows indicating data flow. Blue and gray color scheme, minimal design, white background, technical illustration style"
+
+2순위: 제품/기술 개념도
+   - 개발 대상의 3D 렌더링 또는 구조 도식화
+   - 핵심 기술 요소를 시각적으로 강조
+   - 프롬프트 예시: "Technical concept diagram of [제품/기술명] showing key elements: [요소1], [요소2]. Isometric 3D view, modern technology style, blue gradient background, clean and professional"
+
+3순위: 연구 범위 맵
+   - 연구 영역의 계층 구조 표현
+   - 세부 과제 간 관계도
+   - 프롬프트 예시: "Research scope map showing hierarchy: [상위 영역] containing [하위 과제1], [하위 과제2]. Tree structure or mind map style, professional colors, clear labels"
+
+**프롬프트 작성 시 포함할 요소:**
+- 키워드: "system architecture", "block diagram", "technical framework", "component structure"
+- 스타일: "professional technical diagram", "clean minimal design", "blue and gray color scheme"
+- 구성: "labeled boxes", "arrows showing flow", "hierarchical structure"
+- 배경: "white background" 또는 "light gray background"
+
+**이미지 생성하지 않아야 할 경우:**
+- RFP가 정책 연구, 문헌 조사, 설문 분석 등 비기술적 내용인 경우
+- 시스템 구성이 너무 단순하여 텍스트만으로 충분한 경우
+- RFP에 구체적 구성 요소나 구조에 대한 언급이 전혀 없는 경우
+
+**개요 섹션 권장 position: "right" (시스템 다이어그램) 또는 "center" (복잡한 구조도)**
 
 [알 수 없는 내용 처리 원칙]
 RFP에서 명확히 제시되지 않은 정보는 다음과 같이 표시:

@@ -87,6 +87,49 @@ items: [
   }
 ]
 
+[이미지 생성 전략 - 필요성 섹션]
+필요성 섹션에서는 **문제점과 해결방안의 대비**를 시각화하는 이미지가 효과적이다.
+
+**이미지가 필요한 경우:**
+- RFP에 현재 상황의 문제점이 구체적으로 언급된 경우
+- 기존 기술과 새로운 기술의 성능 차이가 명확한 경우
+- 시장 동향, 기술 격차 등 정량적 데이터가 제시된 경우
+
+**권장 이미지 유형 (우선순위):**
+
+1순위: Before/After 비교 다이어그램
+   - 기존 방식의 문제점 vs 개선된 방식의 장점
+   - 양쪽을 대칭적으로 배치하여 대비 효과
+   - 프롬프트 예시: "Professional before and after comparison diagram. Left side showing current problems: [문제점1], [문제점2] with red X marks. Right side showing improved solution: [개선점1], [개선점2] with green check marks. Split screen layout with arrow pointing from left to right, clean modern design, white background"
+
+2순위: 문제 상황 개념도
+   - 현재 기술적 한계를 시각적으로 표현
+   - 병목 구간이나 취약점 강조
+   - 프롬프트 예시: "Problem visualization diagram showing bottleneck in current system: [현재 시스템] with highlighted pain points: [문제 영역1], [문제 영역2]. Use red/orange colors for problem areas, technical illustration style, white background"
+
+3순위: 성능 향상 비교 차트
+   - 기존 vs 개선 성능을 막대/선 그래프로 표현
+   - 정량적 개선 효과 시각화
+   - 프롬프트 예시: "Performance comparison bar chart showing improvement from current [X%] to improved [Y%] for metrics: [지표1], [지표2], [지표3]. Professional business chart style, blue and green colors, clear labels, white background"
+
+4순위: 시장/기술 격차 시각화
+   - 국내외 기술 수준 차이 표현
+   - 시간축에 따른 격차 변화
+   - 프롬프트 예시: "Technology gap visualization showing domestic level at [X%] vs international level at [Y%] across areas: [영역1], [영역2]. Use horizontal bar chart or radar chart, professional colors, clear comparison"
+
+**프롬프트 작성 시 포함할 요소:**
+- 키워드: "problem solution", "before after", "comparison", "improvement", "gap analysis"
+- 스타일: "professional diagram", "clean comparison", "red for problems green for solutions"
+- 구성: "split layout", "comparative structure", "clear contrast"
+- 배경: "white background", "minimal distractions"
+
+**이미지 생성하지 않아야 할 경우:**
+- RFP에 구체적인 문제점이나 개선점 언급이 없는 경우
+- 정성적인 필요성만 있고 시각화 가능한 요소가 없는 경우
+- 비교 대상이 너무 추상적인 경우
+
+**필요성 섹션 권장 position: "right" (비교 다이어그램) 또는 "center" (차트/그래프)**
+
 [알 수 없는 내용 처리]
 RFP에서 명확히 제시되지 않은 정보는 다음과 같이 표시:
   • 시장 규모: [정보 없음 - 추가 조사 필요]

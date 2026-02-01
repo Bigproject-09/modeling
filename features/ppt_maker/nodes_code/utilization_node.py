@@ -90,6 +90,54 @@ items: [
   }
 ]
 
+[이미지 생성 전략 - 활용계획 섹션]
+활용계획 섹션에서는 **성과의 흐름과 활용 프로세스**를 시각화하는 이미지가 효과적이다.
+
+**이미지가 필요한 경우:**
+- RFP에 구체적인 활용 방안이나 사업화 계획이 제시된 경우
+- 기술 이전, 상용화, 정책 활용 등 다단계 프로세스가 있는 경우
+- 다양한 활용 분야나 이해관계자가 명확한 경우
+
+**권장 이미지 유형 (우선순위):**
+
+1순위: 활용 프로세스 플로우차트
+   - 연구 성과 → 기술 이전 → 상용화 → 시장 진입의 단계적 흐름
+   - 각 단계별 주요 활동 표시
+   - 프롬프트 예시: "Professional process flowchart showing utilization path: Research Output → Technology Transfer → Commercialization → Market Entry. Each step with key activities: [활동1], [활동2], [활동3]. Horizontal flow with arrows, blue gradient boxes, clean modern design, white background"
+
+2순위: 사업화 로드맵
+   - 시간 축에 따른 활용 계획 배치
+   - 단기/중기/장기 목표 구분
+   - 프롬프트 예시: "Commercialization roadmap timeline showing: Year 1 - [기술 이전], Year 2 - [제품 개발], Year 3 - [시장 진입], Year 5 - [확산]. Horizontal timeline with milestones and phase markers, professional business style, blue and green colors"
+
+3순위: 활용 분야 매트릭스
+   - 다양한 활용 영역을 구조화하여 표현
+   - 산업, 정책, 교육 등 영역별 분류
+   - 프롬프트 예시: "Utilization domains matrix showing applications across sectors: Industry - [산업 활용], Policy - [정책 활용], Education - [교육 활용], Public service - [공공 서비스]. Grid layout with icons, modern infographic style, clear categorization"
+
+4순위: 에코시스템 다이어그램
+   - 중앙에 연구 성과, 주변에 활용 주체 배치
+   - 상호 작용과 관계 표시
+   - 프롬프트 예시: "Ecosystem diagram with research outcome at center, surrounded by stakeholders: [기업], [정부기관], [학계], [일반 시민]. Show interactions with arrows, circular layout, modern design with icons, professional color palette"
+
+5순위: 단계별 확산 전략
+   - 초기 → 확산 → 정착 단계 표현
+   - 각 단계별 전략과 대상 명시
+   - 프롬프트 예시: "Diffusion strategy diagram showing stages: Early adoption → Expansion → Establishment. Each stage with target groups and strategies. Pyramid or funnel shape, gradient colors from red to green, professional presentation style"
+
+**프롬프트 작성 시 포함할 요소:**
+- 키워드: "process flow", "roadmap", "utilization path", "commercialization", "diffusion"
+- 스타일: "professional flowchart", "business process diagram", "clean pathway visualization"
+- 구성: "step-by-step flow", "chronological progression", "multi-level structure"
+- 색상: "blue for professional", "green for growth", "arrows for direction"
+
+**이미지 생성하지 않아야 할 경우:**
+- RFP에 활용 방안이 매우 추상적이거나 구체성이 없는 경우
+- 단순한 나열식 활용 계획으로 시각화 효과가 미미한 경우
+- 프로세스나 단계가 명확하지 않은 경우
+
+**활용계획 섹션 권장 position: "right" (플로우차트/로드맵) 또는 "center" (복잡한 에코시스템)**
+
 [알 수 없는 내용 처리]
 RFP에서 명확히 제시되지 않은 정보는 다음과 같이 표시:
   • 목표 시장: [정보 없음 - 사업화 계획 수립 시 결정]

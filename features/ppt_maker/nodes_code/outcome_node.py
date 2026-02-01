@@ -84,6 +84,49 @@ items: [
   }
 ]
 
+[이미지 생성 전략 - 기대성과 섹션]
+기대성과 섹션에서는 **성과의 시간적 진행과 정량적 효과**를 시각화하는 이미지가 효과적이다.
+
+**이미지가 필요한 경우:**
+- RFP에 연차별 성과 목표가 구체적으로 제시된 경우
+- 정량적 성과 지표 (논문, 특허, 매출 등)가 명확한 경우
+- 다양한 측면의 파급효과가 언급된 경우
+
+**권장 이미지 유형 (우선순위):**
+
+1순위: 성과 로드맵 / 타임라인
+   - 연차별 주요 성과를 시간 축에 배치
+   - 마일스톤을 시각적으로 표현
+   - 프롬프트 예시: "Professional research roadmap timeline showing milestones: Year 1 - [성과1], Year 2 - [성과2], Year 3 - [성과3], Final - [최종 성과]. Horizontal timeline with icons and progress markers, blue gradient design, clean layout, white background"
+
+2순위: 파급효과 다이어그램
+   - 중앙에 핵심 성과, 주변에 파급효과 배치
+   - 방사형 또는 계층형 구조
+   - 프롬프트 예시: "Impact diagram showing central achievement: [핵심 성과] with radiating effects: Technical impact - [기술적 효과], Economic impact - [경제적 효과], Social impact - [사회적 효과]. Radial layout with arrows, professional color scheme, modern infographic style"
+
+3순위: 정량적 성과 시각화
+   - 막대그래프, 원형차트 등으로 성과 수치 표현
+   - 여러 지표를 한눈에 비교
+   - 프롬프트 예시: "Performance metrics visualization showing: Patents [X건], Papers [Y편], Technology transfer [Z건], Market size [W억원]. Use combination of bar chart and pie chart, professional business style, blue and green colors, clear labels"
+
+4순위: 비교 차트 (현재 vs 목표)
+   - 현재 수준과 목표 수준을 대비
+   - 달성 목표를 강조
+   - 프롬프트 예시: "Achievement comparison chart showing current state vs target state across metrics: [지표1], [지표2], [지표3]. Side-by-side bar chart, before in gray and after in blue, percentage improvements shown, professional chart design"
+
+**프롬프트 작성 시 포함할 요소:**
+- 키워드: "roadmap", "timeline", "impact", "achievement", "metrics", "growth"
+- 스타일: "professional infographic", "business presentation", "clean data visualization"
+- 구성: "chronological flow", "hierarchical structure", "comparative layout"
+- 색상: "blue for professional", "green for growth", "gradient effects"
+
+**이미지 생성하지 않아야 할 경우:**
+- RFP에 구체적인 성과 지표나 목표가 없는 경우
+- 정성적인 성과만 있고 시각화 가능한 수치가 없는 경우
+- 성과가 단일 항목으로 너무 단순한 경우
+
+**기대성과 섹션 권장 position: "right" (타임라인/다이어그램) 또는 "center" (복합 차트)**
+
 [알 수 없는 내용 처리]
 RFP에서 명확히 제시되지 않은 정보는 다음과 같이 표시:
   • 시장 규모: [정보 없음 - 추가 조사 필요]
