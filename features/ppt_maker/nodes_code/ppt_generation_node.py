@@ -2141,3 +2141,17 @@ def test():
 
 if __name__ == "__main__":
     test()
+
+def ppt_generation_node(state: Dict) -> Dict:
+    """LangGraph 호환 래퍼 함수"""
+    # 기본 출력 경로 설정
+    base_dir = r"C:\big_project\modeling\data\pptx"
+    
+    # 실제 생성 함수 호출
+    result = generate_ppt(
+        state=state,
+        output_dir=base_dir
+    )
+    
+    # State 업데이트를 위해 결과 반환 (final_ppt_path 키 사용)
+    return {"final_ppt_path": result.get("ppt_path", "")}
