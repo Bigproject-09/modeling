@@ -3,3 +3,5 @@ lxml
 python-dotenv
 google-genai
 langgraph
+mysql-connector-python
+python-pptx

@@ -2,14 +2,129 @@ import os
 import json
 from dotenv import load_dotenv
 from google import genai
+import mysql.connector
 
 # .env 파일 로드
 load_dotenv()
 
 # =========================================================
-# 회원가입에서 받는 정보
+# 회원가입에서 받는 정보 (DB에서 로딩해서 사용)
 # =========================================================
-USER_ENTITY_TYPE = "영리"
+# DB에는 PROFIT/NONPROFIT로 들어가 있을 수 있어서, 아래에서 영리/비영리로 정규화해서 씀
+USER_ENTITY_TYPE = "UNKNOWN"
+
+# =========================================================
+# DB 연결 (MySQL)
+# =========================================================
+def get_db_conn():
+    """
+    .env에서 DB 접속 정보를 읽어 MySQL 커넥션 생성
+    필요 환경변수:
+      DB_HOST, DB_PORT(선택), DB_USER, DB_PASSWORD, DB_NAME
+    """
+    return mysql.connector.connect(
+        host=os.environ["DB_HOST"],
+        port=int(os.environ.get("DB_PORT", "3306")),
+        user=os.environ["DB_USER"],
+        password=os.environ["DB_PASSWORD"],
+        database=os.environ["DB_NAME"],
+    )
+
+# =========================================================
+# 로그인 유저(users) -> company_id 조회 (방법 2번의 핵심)
+# =========================================================
+def load_company_id_from_user(user_id: int | None = None, user_email: str | None = None) -> int | None:
+    """
+    users 테이블에서 company_id 조회
+    - user_id가 있으면 user_id 우선
+    - 없으면 user_email로 조회
+    - 조회 실패 시 None
+    """
+    if user_id is None and not user_email:
+        return None
+
+    conn = get_db_conn()
+    cur = None
+    try:
+        cur = conn.cursor()
+
+        if user_id is not None:
+            cur.execute("SELECT company_id FROM users WHERE user_id = %s", (user_id,))
+        else:
+            cur.execute("SELECT company_id FROM users WHERE email = %s", (user_email,))
+
+        row = cur.fetchone()
+        if not row or row[0] is None:
+            return None
+
+        return int(row[0])
+
+    finally:
+        try:
+            if cur:
+                cur.close()
+        finally:
+            conn.close()
+
+# =========================================================
+# 개발/테스트용 fallback: 환경변수로 회사 고정
+# =========================================================
+def get_default_company_id() -> int | None:
+    """
+    .env의 DEFAULT_COMPANY_ID를 읽어 company_id로 사용 (개발/테스트용)
+    """
+    v = os.environ.get("DEFAULT_COMPANY_ID")
+    return int(v) if v else None
+
+# =========================================================
+# companies.user_entity_type 조회 및 정규화
+# =========================================================
+def normalize_user_entity_type(v: str | None) -> str:
+    """
+    DB 값(PROFIT/NONPROFIT) 또는 영리/비영리 문자열을 "영리"/"비영리"/"UNKNOWN"으로 통일
+    """
+    if v is None:
+        return "UNKNOWN"
+
+    s = str(v).strip().upper()
+
+    if s in ("PROFIT", "영리"):
+        return "영리"
+    if s in ("NONPROFIT", "비영리"):
+        return "비영리"
+
+    return "UNKNOWN"
+
+def load_user_entity_type(company_id: int) -> str:
+    """
+    companies 테이블에서 user_entity_type을 조회
+    """
+    conn = get_db_conn()
+    cur = None
+    try:
+        cur = conn.cursor()
+        # SQL 덤프 기준 PK는 company_id
+        cur.execute(
+            "SELECT user_entity_type FROM companies WHERE company_id = %s",
+            (company_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return "UNKNOWN"
+        return normalize_user_entity_type(row[0])
+    finally:
+        try:
+            if cur:
+                cur.close()
+        finally:
+            conn.close()
+
+def set_user_entity_type(company_id: int) -> None:
+    """
+    전역 USER_ENTITY_TYPE을 DB 값으로 세팅
+    """
+    global USER_ENTITY_TYPE
+    USER_ENTITY_TYPE = load_user_entity_type(company_id)
 
 # =========================================================
 # 시스템 프롬프트 - 자격요건 체크리스트 (JSON)
@@ -235,6 +350,7 @@ def eligibility_checklist(
     source: str | None = None,
     model: str = "gemini-2.5-flash",
     temperature: float = 0.2,
+    company_id: int | None = None,
 ) -> dict:
     """
     공고문 자격요건을 분석하여 JSON 체크리스트 반환
@@ -251,6 +367,17 @@ def eligibility_checklist(
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("환경변수 GEMINI_API_KEY가 설정되어 있지 않습니다.")
+
+    # =========================================================
+    # 회원가입에서 받는 정보(company_id)
+    # =========================================================
+    if company_id is None:
+        company_id = get_default_company_id()
+
+    # =========================================================
+    # 회원가입에서 받는 정보(USER_ENTITY_TYPE) - DB에서 로딩
+    # =========================================================
+    set_user_entity_type(company_id)
 
     client = genai.Client(api_key=api_key)
     prompt = checklist_prompts(chunks, source)
@@ -336,3 +463,16 @@ def deep_analysis(
         return json.loads(clean_text.strip())
     except json.JSONDecodeError as e:
         raise RuntimeError(f"JSON 파싱 실패: {e}\n응답 내용:\n{text}")
+    
+# =========================================================
+# 회원가입에서 받는 정보(company_id) - 임시: 환경변수 고정
+# =========================================================
+def get_default_company_id() -> int:
+    """
+    임시 운영: .env의 DEFAULT_COMPANY_ID로 회사 고정
+    (추후: 로그인 유저 -> company_id 조회로 교체)
+    """
+    v = os.environ.get("DEFAULT_COMPANY_ID")
+    if not v:
+        raise RuntimeError("환경변수 DEFAULT_COMPANY_ID가 설정되어 있지 않습니다.")
+    return int(v)

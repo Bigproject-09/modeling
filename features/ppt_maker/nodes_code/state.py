@@ -7,6 +7,7 @@ LangGraph State 정의 (최종 버전)
 import operator
 from typing import TypedDict, List, Annotated, Optional, Dict, Any
 
+<<<<<<< HEAD
 # ============================================================
 # 슬라이드 1장(Page)에 대한 정의
 # ============================================================
@@ -35,17 +36,13 @@ class SlideState(TypedDict):
         - text_position="left:45%" → 왼쪽 45% 영역에 텍스트 배치
         - subtitle은 선택사항 (있으면 title 아래 작은 글씨로 표시)
     """
-    page_number: int
-    section: str
-    title: str
-    items: List[SubtitleContent]  # ← subtitle과 content 쌍들의 리스트   
-    content: str
-    image_request: str
-    image_position: str
-    text_position: str
-    image_path: str
-
-
+    page_number: int          # 페이지 번호 (나중에 정렬용)
+    section: str              # 어느 파트인지 (예: 연구 목표)
+    title: str                # 슬라이드 제목
+    items: List[SubtitleContent]
+    image_request: str        # 그림 프롬프트 (없으면 빈 문자열)
+    image_position: str       # 그림 좌표
+    image_path: str           # 생성된 이미지 파일 경로 (초기엔 비어있음)
 # ============================================================
 # 전체 그래프 상태(GraphState) 정의
 # ============================================================

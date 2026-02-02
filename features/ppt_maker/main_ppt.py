@@ -8,17 +8,17 @@ from features.ppt_maker.nodes_code.state import GraphState
 
 # 노드들 import
 from features.ppt_maker.nodes_code.lg_analysis_node import analyze_node
-# from features.ppt_maker.nodes_code.overview_node import overview_node
-# from features.ppt_maker.nodes_code.necessity_node import necessity_node
+from features.ppt_maker.nodes_code.overview_node import overview_node
+from features.ppt_maker.nodes_code.necessity_node import necessity_node
 # from features.ppt_maker.nodes_code.goal_node import goal_node
 # from features.ppt_maker.nodes_code.content_node import content_node
 # from features.ppt_maker.nodes_code.promotion_node import promotion_node
-# from features.ppt_maker.nodes_code.outcome_node import outcome_node
-# from features.ppt_maker.nodes_code.utilization_node import utilization_node
+from features.ppt_maker.nodes_code.outcome_node import outcome_node
+from features.ppt_maker.nodes_code.utilization_node import utilization_node
 # from features.ppt_maker.nodes_code.agency_intro_node import agency_intro_node
 # from features.ppt_maker.nodes_code.image_generation_node import image_generation_node
-# from features.ppt_maker.nodes_code.sort_node import sort_node
-# from features.ppt_maker.nodes_code.ppt_generation_node import ppt_generation_node
+from features.ppt_maker.nodes_code.sort_node import sort_node
+from features.ppt_maker.nodes_code.ppt_generation_node import ppt_generation_node
 
 load_dotenv()
 
@@ -34,35 +34,35 @@ def build_graph():
     
     # Phase 2: 슬라이드 생성 (8개 노드 - 병렬 실행)
     # workflow.add_node("overview", overview_node)
-    # workflow.add_node("necessity", necessity_node)
+    workflow.add_node("necessity", necessity_node)
     # workflow.add_node("goal", goal_node)
     # workflow.add_node("content", content_node)
     # workflow.add_node("promotion", promotion_node)
-    # workflow.add_node("outcome", outcome_node)
-    # workflow.add_node("utilization", utilization_node)
+    workflow.add_node("outcome", outcome_node)
+    workflow.add_node("utilization", utilization_node)
     # workflow.add_node("agency_intro", agency_intro_node)
     
     # Phase 3: 이미지 생성 (1개 노드)
     # workflow.add_node("image_gen", image_generation_node)
     
     # Phase 4: 슬라이드 정렬 (1개 노드)
-    # workflow.add_node("sort", sort_node)
+    workflow.add_node("sort", sort_node)
     
     # Phase 5: PPT 파일 생성 (1개 노드)
-    # workflow.add_node("generate_ppt", ppt_generation_node)
+    workflow.add_node("generate_ppt", ppt_generation_node)
     
     # 3. 엣지(Edge) 설정
     # 시작 -> analyze
     workflow.set_entry_point("analyze")
     
     # analyze -> 8개 슬라이드 생성 노드로 분기 (병렬)
-    # workflow.add_edge("analyze", "overview")
-    # workflow.add_edge("analyze", "necessity")
+    workflow.add_edge("analyze", "overview")
+    workflow.add_edge("analyze", "necessity")
     # workflow.add_edge("analyze", "goal")
     # workflow.add_edge("analyze", "content")
     # workflow.add_edge("analyze", "promotion")
-    # workflow.add_edge("analyze", "outcome")
-    # workflow.add_edge("analyze", "utilization")
+    workflow.add_edge("analyze", "outcome")
+    workflow.add_edge("analyze", "utilization")
     # workflow.add_edge("analyze", "agency_intro")
     
     # 모든 슬라이드 생성 완료 -> 이미지 생성
@@ -79,13 +79,10 @@ def build_graph():
     # workflow.add_edge("image_gen", "sort")
     
     # 정렬 -> PPT 생성
-    # workflow.add_edge("sort", "generate_ppt")
+    workflow.add_edge("sort", "generate_ppt")
     
     # PPT 생성 -> 종료
-    # workflow.add_edge("generate_ppt", END)
-    
-    # 임시: overview만 테스트하는 경우
-    workflow.add_edge("overview", END)
+    workflow.add_edge("generate_ppt", END)
     
     # 4. 그래프 컴파일
     app = workflow.compile()
