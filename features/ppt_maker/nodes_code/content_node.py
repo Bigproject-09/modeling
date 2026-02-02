@@ -9,7 +9,7 @@ import json
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from .state import GraphState, SlideState
+from .state import GraphState, SlideState, create_slide
 
 load_dotenv()
 
@@ -178,15 +178,18 @@ def content_node(state: GraphState) -> dict:
         
         result_slides = []
         for slide in slides_data:
-            slide_state: SlideState = {
-                "page_number": slide.get("page_number", 0),
-                "section": slide.get("section", "연구 내용"),
-                "title": slide.get("title", ""),
-                "content": slide.get("content", ""),
-                "image_request": slide.get("image_request", ""),
-                "image_position": slide.get("image_position", "right:50%"),
-                "image_path": "",
-            }
+            slide_state = create_slide(
+                page_number=slide.get("page_number", 0),
+                section=slide.get("section", "연구 목표"),
+                title=slide.get("title", ""),
+                content=slide.get("content", ""),
+                subtitle=slide.get("subtitle", ""),     # ✅ 추가
+                items=slide.get("items", None),         # ✅ 추가 (없으면 None)
+                image_request=slide.get("image_request", ""),
+                image_position=slide.get("image_position", "right:50%"),
+                text_position=slide.get("text_position", "left:45%"),  # ✅ 추가
+                image_path="",  # 초기값
+            )
             result_slides.append(slide_state)
         
         print(f"[연구 내용 노드] 슬라이드 {len(result_slides)}장 생성 완료")
@@ -202,50 +205,3 @@ def content_node(state: GraphState) -> dict:
         return {"slides": []}
 
 
-# ============================================================
-# 테스트 코드
-# ============================================================
-if __name__ == "__main__":
-    print("--- [TEST] 연구 내용 노드 단독 실행 ---")
-    
-    dummy_state: GraphState = {
-        "rfp_text": "",
-        "analyzed_json": {
-            "project_summary": {
-                "title": "AI 기반 스마트팩토리 플랫폼 개발",
-                "keywords": ["AI", "예지보전", "LSTM", "실시간 처리", "클라우드"]
-            },
-            "tasks": {
-                "research_content": {
-                    "role": "연구 내용",
-                    "instruction": "시스템 아키텍처를 3-tier 구조로 설명하고, AI 모델 구조를 상세히 제시",
-                    "relevant_context": """
-                    [개발 시스템 요구사항]
-                    - 실시간 센서 데이터 수집 (1초 단위)
-                    - AI 기반 고장 예측 (LSTM 또는 Transformer 활용)
-                    - 웹 기반 모니터링 대시보드
-                    - 클라우드 인프라 (AWS, GCP 등)
-                    - 데이터베이스: 최소 10만건 이상 저장 가능
-                    
-                    [필수 기능]
-                    - 실시간 알람 기능 (SMS/Email)
-                    - 과거 데이터 분석 및 리포트 생성
-                    - 사용자 권한 관리
-                    """
-                }
-            }
-        },
-        "slides": [],
-        "final_ppt_path": ""
-    }
-    
-    result = content_node(dummy_state)
-    
-    if result["slides"]:
-        print("\n[성공] 생성된 슬라이드:")
-        for slide in result["slides"]:
-            print(f"\n제목: {slide['title']}")
-            print(f"내용:\n{slide['content']}")
-            print(f"이미지: {slide['image_request'][:70]}...")
-    else:
-        print("[실패]")

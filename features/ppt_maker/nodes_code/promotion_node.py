@@ -9,7 +9,7 @@ import json
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from .state import GraphState, SlideState
+from .state import GraphState, SlideState, create_slide
 
 load_dotenv()
 
@@ -153,15 +153,18 @@ def promotion_node(state: GraphState) -> dict:
         
         result_slides = []
         for slide in slides_data:
-            slide_state: SlideState = {
-                "page_number": slide.get("page_number", 0),
-                "section": slide.get("section", "추진 계획"),
-                "title": slide.get("title", ""),
-                "content": slide.get("content", ""),
-                "image_request": slide.get("image_request", ""),
-                "image_position": slide.get("image_position", "right:50%"),
-                "image_path": "",
-            }
+            slide_state = create_slide(
+                page_number=slide.get("page_number", 0),
+                section=slide.get("section", "연구 목표"),
+                title=slide.get("title", ""),
+                content=slide.get("content", ""),
+                subtitle=slide.get("subtitle", ""),     # ✅ 추가
+                items=slide.get("items", None),         # ✅ 추가 (없으면 None)
+                image_request=slide.get("image_request", ""),
+                image_position=slide.get("image_position", "right:50%"),
+                text_position=slide.get("text_position", "left:45%"),  # ✅ 추가
+                image_path="",  # 초기값
+            )
             result_slides.append(slide_state)
         
         print(f"[추진 계획 노드] 슬라이드 {len(result_slides)}장 생성 완료")
@@ -177,53 +180,3 @@ def promotion_node(state: GraphState) -> dict:
         return {"slides": []}
 
 
-# ============================================================
-# 테스트 코드
-# ============================================================
-if __name__ == "__main__":
-    print("--- [TEST] 추진 계획 노드 단독 실행 ---")
-    
-    dummy_state: GraphState = {
-        "rfp_text": "",
-        "analyzed_json": {
-            "project_summary": {
-                "title": "AI 기반 스마트팩토리 플랫폼 개발",
-                "period": "24개월 (2025.03 ~ 2027.02)",
-                "budget": "정부지원금 10억원",
-                "keywords": ["AI", "예지보전", "스마트팩토리"]
-            },
-            "tasks": {
-                "promotion_plan": {
-                    "role": "추진 계획",
-                    "instruction": "24개월 일정에 맞춰 3단계로 구분하고, 위험관리 계획 포함",
-                    "relevant_context": """
-                    [수행 기간]
-                    총 24개월 (2025년 3월 ~ 2027년 2월)
-                    
-                    [추진 체계 요구사항]
-                    - 총괄 책임자: 박사급 연구원 (AI 분야 10년 이상)
-                    - 세부과제별 책임자 지정 필수
-                    - 월 1회 이상 진도 점검 회의 개최
-                    
-                    [제출 결과물]
-                    - 중간보고서 (12개월 차)
-                    - 최종보고서 (24개월 차)
-                    - 실증 테스트 결과 데이터
-                    """
-                }
-            }
-        },
-        "slides": [],
-        "final_ppt_path": ""
-    }
-    
-    result = promotion_node(dummy_state)
-    
-    if result["slides"]:
-        print("\n[성공] 생성된 슬라이드:")
-        for slide in result["slides"]:
-            print(f"\n제목: {slide['title']}")
-            print(f"내용:\n{slide['content']}")
-            print(f"이미지: {slide['image_request'][:70]}...")
-    else:
-        print("[실패] 슬라이드 생성 안됨")

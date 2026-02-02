@@ -9,7 +9,7 @@ import json
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from .state import GraphState, SlideState
+from .state import GraphState, SlideState, create_slide
 
 load_dotenv()
 
@@ -153,15 +153,18 @@ def agency_intro_node(state: GraphState) -> dict:
         # 5. SlideState로 변환
         result_slides = []
         for slide in slides_data:
-            slide_state: SlideState = {
-                "page_number": slide.get("page_number", 0),
-                "section": slide.get("section", "기관 소개"),
-                "title": slide.get("title", ""),
-                "content": slide.get("content", ""),
-                "image_request": slide.get("image_request", ""),
-                "image_position": slide.get("image_position", "right:50%"),
-                "image_path": "",  # 초기값 (이미지 생성 노드에서 채움)
-            }
+            slide_state = create_slide(
+                page_number=slide.get("page_number", 0),
+                section=slide.get("section", "연구 목표"),
+                title=slide.get("title", ""),
+                content=slide.get("content", ""),
+                subtitle=slide.get("subtitle", ""),     # ✅ 추가
+                items=slide.get("items", None),         # ✅ 추가 (없으면 None)
+                image_request=slide.get("image_request", ""),
+                image_position=slide.get("image_position", "right:50%"),
+                text_position=slide.get("text_position", "left:45%"),  # ✅ 추가
+                image_path="",  # 초기값
+            )
             result_slides.append(slide_state)
         
         print(f"[기관 소개 노드] 슬라이드 {len(result_slides)}장 생성 완료")

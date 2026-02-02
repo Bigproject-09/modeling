@@ -5,7 +5,7 @@ LangGraph State 정의 (최종 버전)
 """
 
 import operator
-from typing import TypedDict, List, Annotated, Optional
+from typing import TypedDict, List, Annotated, Optional, Dict, Any
 
 # ============================================================
 # 슬라이드 1장(Page)에 대한 정의
@@ -119,53 +119,85 @@ def create_slide(
     page_number: int,
     section: str,
     title: str,
-    content: str,
+    content: str = "",
     subtitle: str = "",
+    items: Optional[List[Dict[str, str]]] = None,
     image_request: str = "",
     image_position: str = "right:50%",
-    text_position: str = "left:45%"
-) -> SlideState:
+    text_position: str = "left:45%",
+    image_path: str = "",
+) -> "SlideState":
     """
     SlideState 생성 헬퍼 함수
-    
-    Args:
-        page_number: 페이지 번호
-        section: 섹션명
-        title: 제목
-        content: 내용
-        subtitle: 부제 (선택)
-        image_request: 이미지 프롬프트 (선택)
-        image_position: 이미지 위치 (기본값: "right:50%")
-        text_position: 텍스트 위치 (기본값: "left:45%")
-    
-    Returns:
-        SlideState: 슬라이드 객체
+    - subtitle/items/text_position을 항상 포함해 KeyError 방지
+    - items는 [{"subtitle": "...", "content": "..."}, ...] 형태
     """
+
+    normalized_items: List[Dict[str, str]] = []
+    if items:
+        for it in items:
+            if isinstance(it, dict):
+                normalized_items.append({
+                    "subtitle": str(it.get("subtitle", "")),
+                    "content": str(it.get("content", "")),
+                })
+
     return {
-        "page_number": page_number,
-        "section": section,
-        "title": title,
-        "subtitle": subtitle,
-        "content": content,
-        "image_request": image_request,
-        "image_position": image_position,
-        "text_position": text_position,
-        "image_path": ""
+        "page_number": int(page_number),
+        "section": str(section),
+        "title": str(title),
+        "subtitle": str(subtitle or ""),
+        "items": normalized_items,
+        "content": str(content or ""),
+        "image_request": str(image_request or ""),
+        "image_position": str(image_position or "right:50%"),
+        "text_position": str(text_position or "left:45%"),
+        "image_path": str(image_path or ""),
     }
 
 
 def validate_slide(slide: SlideState) -> bool:
     """
     SlideState 유효성 검사
-    
-    Args:
-        slide: 검사할 슬라이드
-        
-    Returns:
-        bool: 필수 필드가 모두 있으면 True
+
+    통과 조건:
+    - page_number/section/title 키가 존재하고 값이 유효
+    - 본문은 (content가 비어있지 않음) OR (items에 유효한 항목이 1개 이상) 중 하나면 OK
     """
-    required_fields = ["page_number", "section", "title", "content"]
-    return all(field in slide and slide[field] for field in required_fields)
+
+    # 1) 키 존재 + 기본값 검사
+    for key in ["page_number", "section", "title"]:
+        if key not in slide:
+            return False
+
+    # page_number는 0보다 큰 정수 권장(0 허용 여부는 팀 룰)
+    try:
+        if int(slide["page_number"]) <= 0:
+            return False
+    except Exception:
+        return False
+
+    if not str(slide["section"]).strip():
+        return False
+    if not str(slide["title"]).strip():
+        return False
+
+    # 2) 본문 검사: content 또는 items 중 하나
+    content_ok = bool(str(slide.get("content", "")).strip())
+
+    items = slide.get("items", [])
+    items_ok = False
+    if isinstance(items, list) and len(items) > 0:
+        # items 안에 subtitle/content 중 하나라도 채워진 항목이 있으면 OK
+        for it in items:
+            if isinstance(it, dict):
+                sub_ok = bool(str(it.get("subtitle", "")).strip())
+                txt_ok = bool(str(it.get("content", "")).strip())
+                if sub_ok or txt_ok:
+                    items_ok = True
+                    break
+
+    return content_ok or items_ok
 
 
 def validate_analyzed_json(analyzed_json: dict) -> tuple[bool, str]:
@@ -211,79 +243,3 @@ def validate_analyzed_json(analyzed_json: dict) -> tuple[bool, str]:
     return True, "정상"
 
 
-# ============================================================
-# 테스트 코드
-# ============================================================
-if __name__ == "__main__":
-    print("=" * 80)
-    print("State 구조 테스트 (최종 버전)")
-    print("=" * 80)
-    
-    # 1. SlideState 예시
-    sample_slide = create_slide(
-        page_number=1,
-        section="연구 목표",
-        title="연구개발 최종 목표",
-        subtitle="AI 기반 예지보전 시스템 개발",  # ← subtitle 추가
-        content="• 목표1: AI 정확도 95%\n• 목표2: 처리속도 1초 이내",
-        image_request="target achievement visualization with arrows",
-        image_position="right:50%",
-        text_position="left:45%"
-    )
-    
-    print("\n[SlideState 예시]")
-    print(f"  제목: {sample_slide['title']}")
-    print(f"  부제: {sample_slide['subtitle']}")  # ← 출력
-    print(f"  섹션: {sample_slide['section']}")
-    print(f"  이미지 위치: {sample_slide['image_position']}")
-    print(f"  텍스트 위치: {sample_slide['text_position']}")
-    print(f"  유효성: {validate_slide(sample_slide)}")
-    
-    # 2. GraphState 예시
-    sample_state = create_empty_state()
-    sample_state["slides"] = [sample_slide]
-    
-    print(f"\n[GraphState 예시]")
-    print(f"  슬라이드 수: {len(sample_state['slides'])}")
-    print(f"  RFP 텍스트: {'있음' if sample_state['rfp_text'] else '없음'}")
-    
-    # 3. analyzed_json 검증 테스트
-    print("\n[analyzed_json 검증 테스트]")
-    
-    # 정상 케이스
-    valid_json = {
-        "project_summary": {
-            "title": "AI 플랫폼 개발",
-            "subtitle": "스마트팩토리용",
-            "purpose": "예지보전 시스템 구축",
-            "background": "현재 고장 예측 어려움",
-            "period": "24개월",
-            "budget": "10억원",
-            "keywords": ["AI", "예지보전"],
-            "target_technology": "LSTM 기반 시스템",
-            "expected_impact": "가동률 15% 향상",
-            "evaluation_criteria": "기술성 50%, 사업성 30%"
-        },
-        "tasks": {
-            "agency_intro": {"role": "기관 소개", "instruction": "...", "relevant_context": "...", "key_points": []},
-            "project_overview": {"role": "사업 개요", "instruction": "...", "relevant_context": "...", "key_points": []},
-            "research_necessity": {"role": "연구 필요성", "instruction": "...", "relevant_context": "...", "key_points": []},
-            "research_goal": {"role": "연구 목표", "instruction": "...", "relevant_context": "...", "key_points": []},
-            "research_content": {"role": "연구 내용", "instruction": "...", "relevant_context": "...", "key_points": []},
-            "promotion_plan": {"role": "추진 계획", "instruction": "...", "relevant_context": "...", "key_points": []},
-            "expected_outcome": {"role": "기대 성과", "instruction": "...", "relevant_context": "...", "key_points": []},
-            "utilization_plan": {"role": "활용 계획", "instruction": "...", "relevant_context": "...", "key_points": []}
-        }
-    }
-    
-    is_valid, message = validate_analyzed_json(valid_json)
-    print(f"  정상 케이스: {is_valid} - {message}")
-    
-    # 오류 케이스
-    invalid_json = {"project_summary": {}}
-    is_valid, message = validate_analyzed_json(invalid_json)
-    print(f"  오류 케이스: {is_valid} - {message}")
-    
-    print("\n" + "=" * 80)
-    print("테스트 완료!")
-    print("=" * 80)

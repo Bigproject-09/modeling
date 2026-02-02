@@ -9,7 +9,7 @@ import json
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from .state import GraphState, SlideState
+from .state import GraphState, SlideState, create_slide
 
 load_dotenv()
 
@@ -163,15 +163,18 @@ def goal_node(state: GraphState) -> dict:
         
         result_slides = []
         for slide in slides_data:
-            slide_state: SlideState = {
-                "page_number": slide.get("page_number", 0),
-                "section": slide.get("section", "연구 목표"),
-                "title": slide.get("title", ""),
-                "content": slide.get("content", ""),
-                "image_request": slide.get("image_request", ""),
-                "image_position": slide.get("image_position", "right:50%"),
-                "image_path": "",
-            }
+            slide_state = create_slide(
+                page_number=slide.get("page_number", 0),
+                section=slide.get("section", "연구 목표"),
+                title=slide.get("title", ""),
+                content=slide.get("content", ""),
+                subtitle=slide.get("subtitle", ""),     # ✅ 추가
+                items=slide.get("items", None),         # ✅ 추가 (없으면 None)
+                image_request=slide.get("image_request", ""),
+                image_position=slide.get("image_position", "right:50%"),
+                text_position=slide.get("text_position", "left:45%"),  # ✅ 추가
+                image_path="",  # 초기값
+            )
             result_slides.append(slide_state)
         
         print(f"[연구 목표 노드] 슬라이드 {len(result_slides)}장 생성 완료")
@@ -187,53 +190,3 @@ def goal_node(state: GraphState) -> dict:
         return {"slides": []}
 
 
-# ============================================================
-# 테스트 코드
-# ============================================================
-if __name__ == "__main__":
-    print("--- [TEST] 연구 목표 노드 단독 실행 ---")
-    
-    dummy_state: GraphState = {
-        "rfp_text": "",
-        "analyzed_json": {
-            "project_summary": {
-                "title": "AI 기반 스마트팩토리 플랫폼 개발",
-                "purpose": "제조업 설비 고장 예측 정확도를 95% 이상으로 향상시켜 가동률 증대",
-                "keywords": ["AI", "예지보전", "스마트팩토리"]
-            },
-            "tasks": {
-                "research_goal": {
-                    "role": "연구 목표",
-                    "instruction": "정량적 목표(정확도, 속도)와 정성적 목표(기술기여도)를 균형있게 제시",
-                    "relevant_context": """
-                    [개발 목표]
-                    - 고장 예측 정확도 95% 이상
-                    - 실시간 처리 속도 1초 이내
-                    - 오탐률(False Positive) 5% 이하
-                    
-                    [성과 목표]
-                    - 특허 출원 2건 이상
-                    - SCI급 논문 2편 이상
-                    - 기술이전 1건 이상
-                    
-                    [기대 효과]
-                    - 설비 가동률 15% 향상
-                    - 유지보수 비용 30% 절감
-                    """
-                }
-            }
-        },
-        "slides": [],
-        "final_ppt_path": ""
-    }
-    
-    result = goal_node(dummy_state)
-    
-    if result["slides"]:
-        print("\n[성공] 생성된 슬라이드:")
-        for slide in result["slides"]:
-            print(f"\n제목: {slide['title']}")
-            print(f"내용:\n{slide['content']}")
-            print(f"이미지: {slide['image_request'][:70]}...")
-    else:
-        print("[실패]")
