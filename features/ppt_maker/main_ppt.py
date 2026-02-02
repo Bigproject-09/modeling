@@ -46,10 +46,10 @@ def build_graph():
     # workflow.add_node("image_gen", image_generation_node)
     
     # Phase 4: 슬라이드 정렬 (1개 노드)
-    # workflow.add_node("sort", sort_node)
+    workflow.add_node("sort", sort_node)
     
     # Phase 5: PPT 파일 생성 (1개 노드)
-    # workflow.add_node("generate_ppt", ppt_generation_node)
+    workflow.add_node("generate_ppt", ppt_generation_node)
     
     # 3. 엣지(Edge) 설정
     # 시작 -> analyze
@@ -79,10 +79,10 @@ def build_graph():
     # workflow.add_edge("image_gen", "sort")
     
     # 정렬 -> PPT 생성
-    # workflow.add_edge("sort", "generate_ppt")
+    workflow.add_edge("sort", "generate_ppt")
     
     # PPT 생성 -> 종료
-    # workflow.add_edge("generate_ppt", END)
+    workflow.add_edge("generate_ppt", END)
     
     # 4. 그래프 컴파일
     app = workflow.compile()
