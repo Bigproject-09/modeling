@@ -6,8 +6,6 @@ LangGraph State 정의 (최종 버전)
 
 import operator
 from typing import TypedDict, List, Annotated, Optional, Dict, Any
-
-<<<<<<< HEAD
 # ============================================================
 # 슬라이드 1장(Page)에 대한 정의
 # ============================================================
@@ -43,6 +41,7 @@ class SlideState(TypedDict):
     image_request: str        # 그림 프롬프트 (없으면 빈 문자열)
     image_position: str       # 그림 좌표
     image_path: str           # 생성된 이미지 파일 경로 (초기엔 비어있음)
+
 # ============================================================
 # 전체 그래프 상태(GraphState) 정의
 # ============================================================
