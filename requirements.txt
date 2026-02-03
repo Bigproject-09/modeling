@@ -10,3 +10,4 @@ uvicorn
 pymysql
 python-multipart
 requests
+chromadb
