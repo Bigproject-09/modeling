@@ -4,6 +4,7 @@ venv/
 .venv/
 __pycache__/
 *.pyc
+config.py
 
 # 데이터 및 실행 결과물 (Push 제외 권장)
 data/
