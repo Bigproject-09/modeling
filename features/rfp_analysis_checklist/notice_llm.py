@@ -1,27 +1,25 @@
+"""
+공고문 분석 및 자격요건 자동 판정 시스템 (notice_llm)
+
+DB에 저장된 사업보고서 섹션 JSON을 조회하여:
+1. 공고문 자격요건 자동 판정 (가능/불가능/확인 필요)
+2. 공고문 + RFP 심층 분석 (수주 전략 리포트)
+"""
+
 import os
 import json
 from dotenv import load_dotenv
 from google import genai
-# import mysql.connector
+import mysql.connector
 
 # .env 파일 로드
 load_dotenv()
 
 # =========================================================
-# 회원가입에서 받는 정보 (DB에서 로딩해서 사용)
-# =========================================================
-# DB에는 PROFIT/NONPROFIT로 들어가 있을 수 있어서, 아래에서 영리/비영리로 정규화해서 씀
-USER_ENTITY_TYPE = "UNKNOWN"
-
-# =========================================================
-# DB 연결 (MySQL)
+# DB 연결
 # =========================================================
 def get_db_conn():
-    """
-    .env에서 DB 접속 정보를 읽어 MySQL 커넥션 생성
-    필요 환경변수:
-      DB_HOST, DB_PORT(선택), DB_USER, DB_PASSWORD, DB_NAME
-    """
+    """MySQL 커넥션 생성"""
     return mysql.connector.connect(
         host=os.environ["DB_HOST"],
         port=int(os.environ.get("DB_PORT", "3306")),
@@ -31,34 +29,41 @@ def get_db_conn():
     )
 
 # =========================================================
-# 로그인 유저(users) -> company_id 조회 (방법 2번의 핵심)
+# DB에서 사업보고서 섹션 JSON 조회
 # =========================================================
-def load_company_id_from_user(user_id: int | None = None, user_email: str | None = None) -> int | None:
+def load_business_report_from_db(company_id: int) -> dict:
     """
-    users 테이블에서 company_id 조회
-    - user_id가 있으면 user_id 우선
-    - 없으면 user_email로 조회
-    - 조회 실패 시 None
+    DB에서 사업보고서 섹션 JSON 전체 조회
+    
+    Args:
+        company_id: 기업 ID
+    
+    Returns:
+        dict: 사업보고서 섹션 데이터
     """
-    if user_id is None and not user_email:
-        return None
-
     conn = get_db_conn()
     cur = None
+    
     try:
         cur = conn.cursor()
-
-        if user_id is not None:
-            cur.execute("SELECT company_id FROM users WHERE user_id = %s", (user_id,))
-        else:
-            cur.execute("SELECT company_id FROM users WHERE email = %s", (user_email,))
-
-        row = cur.fetchone()
-        if not row or row[0] is None:
-            return None
-
-        return int(row[0])
-
+        
+        query = """
+            SELECT business_report_sections
+            FROM companies
+            WHERE company_id = %s
+        """
+        
+        cur.execute(query, (company_id,))
+        result = cur.fetchone()
+        
+        if not result or result[0] is None:
+            raise RuntimeError(f"company_id {company_id}에 해당하는 사업보고서를 찾을 수 없습니다.")
+        
+        # JSON 문자열을 파싱
+        sections_data = json.loads(result[0])
+        
+        return sections_data
+    
     finally:
         try:
             if cur:
@@ -67,133 +72,83 @@ def load_company_id_from_user(user_id: int | None = None, user_email: str | None
             conn.close()
 
 # =========================================================
-# 개발/테스트용 fallback: 환경변수로 회사 고정
+# 개발/테스트용: 환경변수로 회사 고정
 # =========================================================
 def get_default_company_id() -> int | None:
-    """
-    .env의 DEFAULT_COMPANY_ID를 읽어 company_id로 사용 (개발/테스트용)
-    """
+    """DEFAULT_COMPANY_ID 환경변수 읽기"""
     v = os.environ.get("DEFAULT_COMPANY_ID")
     return int(v) if v else None
 
 # =========================================================
-# companies.user_entity_type 조회 및 정규화
+# 시스템 프롬프트 - 자격요건 자동 판정
 # =========================================================
-def normalize_user_entity_type(v: str | None) -> str:
-    """
-    DB 값(PROFIT/NONPROFIT) 또는 영리/비영리 문자열을 "영리"/"비영리"/"UNKNOWN"으로 통일
-    """
-    if v is None:
-        return "UNKNOWN"
-
-    s = str(v).strip().upper()
-
-    if s in ("PROFIT", "영리"):
-        return "영리"
-    if s in ("NONPROFIT", "비영리"):
-        return "비영리"
-
-    return "UNKNOWN"
-
-def load_user_entity_type(company_id: int) -> str:
-    """
-    companies 테이블에서 user_entity_type을 조회
-    """
-    # [임시 수정] DB 연동 부분 주석 처리 및 하드코딩 리턴
-    return "영리"
-
-    # conn = get_db_conn()
-    # cur = None
-    # try:
-    #     cur = conn.cursor()
-    #     # SQL 덤프 기준 PK는 company_id
-    #     cur.execute(
-    #         "SELECT user_entity_type FROM companies WHERE company_id = %s",
-    #         (company_id,),
-    #     )
-    #     row = cur.fetchone()
-    #     if not row:
-    #         return "UNKNOWN"
-    #     return normalize_user_entity_type(row[0])
-    # finally:
-    #     try:
-    #         if cur:
-    #             cur.close()
-    #     finally:
-    #         conn.close()
-
-def set_user_entity_type(company_id: int) -> None:
-    """
-    전역 USER_ENTITY_TYPE을 DB 값으로 세팅
-    """
-    global USER_ENTITY_TYPE
-    USER_ENTITY_TYPE = load_user_entity_type(company_id)
-
-# =========================================================
-# 시스템 프롬프트 - 자격요건 체크리스트 (JSON)
-# =========================================================
-SYSTEM_INSTRUCTION_CHECKLIST = """
-    너는 R&D 공고문 자격요건 분석 전문가다.
+SYSTEM_INSTRUCTION_ELIGIBILITY = """
+    너는 R&D 공고문 자격요건 자동 판정 전문가다.
     반드시 한국어로 답하고, JSON 형식으로 출력한다.
 
     너의 역할:
-    1. 공고문의 자격요건을 추출한다
-    2. 사용자의 회원가입 정보(영리/비영리, 기업규모)와 비교한다
-    3. 각 자격요건에 대해 PASS/FAIL/UNKNOWN을 자동 판정한다
-    4. 사용자가 최종 확인할 수 있도록 체크리스트 형식으로 제공한다
+    1. 공고문에서 모든 자격요건을 추출한다
+    2. 제공된 사업보고서 정보와 각 자격요건을 비교한다
+    3. 각 요건에 대해 '가능'/'불가능'/'확인 필요'로 자동 판정한다
+    4. 판정 근거로 공고문 원문을 그대로 인용하고, 상세한 판단 이유를 제공한다
 
     자동판정 규칙:
-    - PASS: 사용자 정보가 자격요건을 명확히 충족함
-    - FAIL: 사용자 정보가 자격요건을 명확히 불충족함
-    - UNKNOWN: 추가 정보가 필요하거나 판단이 애매한 경우
+    - 가능: 사업보고서 정보가 자격요건을 명확히 충족
+    - 불가능: 사업보고서 정보가 자격요건을 명확히 불충족
+    - 확인 필요: 제공된 정보만으로는 판단 불가능하거나, 사용자가 추가 확인 필요
+
+    재무 상태 판단 가이드:
+    - 자본잠식: 재무제표에서 자본총계가 0 이하이면 자본전액잠식
+    - 감사의견: 감사보고서에서 '의견거절', '부적정', '한정', '적정' 중 하나를 확인
+    - 채무불이행: 사업보고서에 명시된 경우에만 판정 가능
+    - 재무제표가 있으면 반드시 자본총계, 부채총계, 자산총계를 확인하여 판단
 
     출력 형식 (JSON):
     {
-      "title": "자격요건 체크리스트",
-      "auto_judgment": [
-        {
-          "category": "신청주체 유형",
-          "status": "PASS|FAIL|UNKNOWN",
-          "reason": "판정 근거 설명"
-        },
-        {
-          "category": "기업 규모",
-          "status": "PASS|FAIL|UNKNOWN",
-          "reason": "판정 근거 설명"
-        }
-      ],
-      "requirements": [
+      "title": "자격요건 자동 판정 결과",
+      "overall_eligibility": {
+        "status": "가능|불가능|확인 필요",
+        "summary": "전체 판정을 2-3문장으로 요약"
+      },
+      "judgments": [
         {
           "id": 1,
-          "title": "자격요건 항목명",
-          "requirement": "공고문 원문 요구사항",
-          "status": "PASS|FAIL|UNKNOWN",
-          "reason": "구체적 근거",
-          "chunk_id": "chunk_1",
-          "confirmation_needed": "사용자가 추가로 확인해야 할 내용"
+          "category": "신청주체 유형",
+          "requirement_text": "공고문의 해당 자격요건 원문을 그대로 인용",
+          "judgment": "가능|불가능|확인 필요",
+          "reason": "판정 근거를 구체적이고 명확하게 설명. 사업보고서의 어떤 부분을 보고 어떻게 판단했는지 상세히 기술. 재무 관련 판단 시 구체적인 수치 명시",
+          "company_info_used": "판정에 사용된 사업보고서 정보 (예: 자본총계 15,877백만원, 감사의견 '적정' 등)",
+          "quote_from_announcement": "판정 근거가 된 공고문 원문을 정확히 인용",
+          "additional_action": "가능이면 null, 불가능이면 구체적인 사유, 확인 필요면 무엇을 어떻게 확인해야 하는지 안내"
         }
       ],
-      "additional_notes": [
-        "자동판정이 PASS여도 반드시 원문을 확인하세요",
-        "체크리스트 항목을 모두 확인한 후 신청하시기 바랍니다"
+      "warning_items": [
+        "특별히 주의해야 할 사항"
+      ],
+      "missing_info": [
+        "판정에 필요하지만 사업보고서에서 찾을 수 없는 정보"
+      ],
+      "recommendations": [
+        "신청 전 권장사항"
       ]
     }
 
     규칙:
-    - 모든 자격요건을 빠짐없이 나열한다
-    - 근거는 공고문 원문을 그대로 인용한다
-    - chunk_id를 명시하여 추적 가능하게 한다
+    - 모든 자격요건을 빠짐없이 판정한다
+    - 판정 근거는 반드시 공고문 원문을 인용하고, 어떤 부분을 보고 판단했는지 명확히 한다
+    - 재무제표 정보가 있으면 반드시 활용하여 판단한다
+    - 애매한 경우 '확인 필요'로 판정하고, 무엇을 확인해야 하는지 구체적으로 안내한다
     - 반드시 유효한 JSON만 출력한다 (코드 블록 없이)
     """.strip()
 
 # =========================================================
-# 시스템 프롬프트 - 심층 분석 (JSON)
+# 시스템 프롬프트 - 심층 분석
 # =========================================================
 SYSTEM_INSTRUCTION_ANALYSIS = """
     당신은 대한민국 최고의 국가 R&D 제안 전략 컨설턴트입니다.
     반드시 한국어로 답하고, JSON 형식으로 출력합니다.
 
-    제공된 공고문을 정밀 분석하여 '수주 전략 리포트'를 작성하세요.
+    제공된 공고문과 RFP 양식을 정밀 분석하여 '수주 전략 리포트'를 작성하세요.
 
     출력 형식 (JSON):
     {
@@ -221,24 +176,8 @@ SYSTEM_INSTRUCTION_ANALYSIS = """
       ],
       "competitiveness_strategies": [
         {
-          "title": "전략명 1",
+          "title": "전략명",
           "description": "기술적 우위, 사업화 가능성, 인력/인프라 강점 등을 구체적으로 설명",
-          "action_plans": [
-            "세부 실행 1",
-            "세부 실행 2"
-          ]
-        },
-        {
-          "title": "전략명 2",
-          "description": "차별화 포인트를 구체적으로 설명",
-          "action_plans": [
-            "세부 실행 1",
-            "세부 실행 2"
-          ]
-        },
-        {
-          "title": "전략명 3",
-          "description": "경쟁사 대비 우위를 확보할 수 있는 방안",
           "action_plans": [
             "세부 실행 1",
             "세부 실행 2"
@@ -256,140 +195,181 @@ SYSTEM_INSTRUCTION_ANALYSIS = """
 
     규칙:
     - 구체적이고 실행 가능한 전략을 제시한다
-    - 공고문의 원문을 근거로 분석한다
+    - 공고문과 RFP 양식의 원문을 근거로 분석한다
     - 반드시 유효한 JSON만 출력한다 (코드 블록 없이)
     - 불필요한 일반론은 배제하고 실질적인 조언을 제공한다
     """.strip()
 
 # =========================================================
-# 유저 프롬프트 생성 - 자격요건
+# 프롬프트 생성 - 자격요건 자동 판정
 # =========================================================
-def checklist_prompts(chunks: list[dict], source: str | None = None) -> str:
-    """
-    Gemini에 전달할 프롬프트 생성 (자격요건 체크리스트용)
-    
-    Args:
-        chunks: 섹션별 텍스트 리스트
-        source: 공고 출처 (선택)
-    
-    Returns:
-        str: 완성된 프롬프트
-    """
+def eligibility_prompt(
+    announcement_chunks: list[dict],
+    business_report_sections: list[dict],
+    source: str | None = None
+) -> str:
+    """자격요건 자동 판정용 프롬프트 생성"""
     header = f"**공고 출처**: {source}\n\n" if source else ""
 
-    user_profile = f"""
-    ## 사용자 정보 (회원가입 데이터)
+    # 사업보고서 섹션을 텍스트로 변환
+    # 재무제표/감사의견 등 중요 정보를 위해 전체 섹션 포함
+    business_report_text = "## 사업보고서 정보\n\n"
+    
+    # 중요 키워드가 있는 섹션 우선 포함
+    priority_keywords = [
+        '재무', '감사', '자본', '부채', '매출', '손익',
+        '중소기업', '벤처', '연구', '인증', '설립'
+    ]
+    
+    priority_sections = []
+    other_sections = []
+    
+    for section in business_report_sections:
+        section_num = section.get('section_number', 'Unknown')
+        title = section.get('title', 'Untitled')
+        content = section.get('content', [])
+        
+        # 우선순위 섹션 판별
+        is_priority = any(keyword in title for keyword in priority_keywords)
+        
+        section_text = f"### 섹션 {section_num}: {title}\n"
+        
+        # 내용이 리스트면 합치기
+        if isinstance(content, list):
+            # 우선순위 섹션은 전체, 일반 섹션은 앞부분만
+            if is_priority:
+                text_content = "\n".join(content)  # 전체
+            else:
+                text_content = "\n".join(content[:30])  # 30줄
+        else:
+            text_content = str(content)[:2000] if is_priority else str(content)[:500]
+        
+        section_text += f"{text_content}\n\n"
+        
+        if is_priority:
+            priority_sections.append(section_text)
+        else:
+            other_sections.append(section_text)
+    
+    # 우선순위 섹션 먼저, 그 다음 일반 섹션
+    business_report_text += "".join(priority_sections)
+    business_report_text += "".join(other_sections[:30])  # 일반 섹션은 30개까지
 
-    | 항목 | 값 |
-    |------|-----|
-    | 신청주체 유형 | {USER_ENTITY_TYPE} |
-
-    """.strip()
-
-    body = "\n\n".join(
+    # 공고문 청크
+    announcement_body = "\n\n".join(
         f"### Chunk {c['chunk_id']}\n```\n{c['text']}\n```"
-        for c in chunks
+        for c in announcement_chunks
     )
 
     return f"""
     {header}
-    {user_profile}
+    {business_report_text}
 
-    아래 공고문에서 자격요건을 추출하고, 사용자 정보와 비교하여 
-    JSON 형식의 체크리스트를 작성하라.
+    아래 공고문의 모든 자격요건을 추출하고, 위에 제공된 사업보고서 정보와 비교하여
+    각 요건에 대해 '가능'/'불가능'/'확인 필요'를 자동 판정하라.
 
-    특히 다음 항목들을 중점적으로 확인하라:
-    1. 영리/비영리 구분 제한
-    2. 기타 모든 자격 요건
+    판정 시 반드시 다음을 포함하라:
+    1. 판정 근거가 된 공고문의 원문을 그대로 인용
+    2. 해당 요건을 어떻게 해석했고, 사업보고서의 어느 부분과 비교했는지 상세 설명
+    3. 불가능하다면 구체적으로 어떤 부분이 불충족인지 명확히 제시
+    4. 확인이 필요하다면 무엇을 어떻게 확인해야 하는지 안내
 
     ## 공고문 내용
-    {body}
+    {announcement_body}
     
     주의: JSON 응답만 출력하고, ```json 같은 코드 블록은 사용하지 마라.
     """.strip()
 
 # =========================================================
-# 유저 프롬프트 생성 - 심층 분석
+# 프롬프트 생성 - 심층 분석
 # =========================================================
-def analysis_prompts(chunks: list[dict], source: str | None = None) -> str:
-    """
-    Gemini에 전달할 프롬프트 생성 (심층 분석용)
-    
-    Args:
-        chunks: 섹션별 텍스트 리스트
-        source: 공고 출처 (선택)
-    
-    Returns:
-        str: 완성된 프롬프트
-    """
+def analysis_prompt(
+    announcement_chunks: list[dict],
+    rfp_chunks: list[dict] | None = None,
+    source: str | None = None
+) -> str:
+    """심층 분석용 프롬프트 생성"""
     header = f"**공고 출처**: {source}\n\n" if source else ""
     
-    body = "\n\n".join(
-        f"### Chunk {c['chunk_id']}\n```\n{c['text']}\n```"
-        for c in chunks
+    announcement_body = "\n\n".join(
+        f"### 공고문 Chunk {c['chunk_id']}\n```\n{c['text']}\n```"
+        for c in announcement_chunks
     )
+    
+    rfp_body = ""
+    if rfp_chunks:
+        rfp_body = "\n\n## RFP 양식 내용\n\n" + "\n\n".join(
+            f"### RFP Chunk {c['chunk_id']}\n```\n{c['text']}\n```"
+            for c in rfp_chunks
+        )
 
     return f"""
     {header}
 
-    아래 공고문을 정밀 분석하여 수주 전략 리포트를 JSON 형식으로 작성하라.
+    아래 공고문과 RFP 양식을 정밀 분석하여 수주 전략 리포트를 JSON 형식으로 작성하라.
 
     분석 요구사항:
     1. 사업 배경과 정부가 해결하고자 하는 핵심 이슈 파악
-    2. 배점이 높거나 까다로운 핵심 평가항목 Top 3 선정 및 만점 전략 수립
+    2. 배점이 높거나 까다로운 핵심 평가항목 선정 및 만점 전략 수립
     3. 경쟁사 대비 차별화할 수 있는 필승 전략 3가지 제시
 
     ## 공고문 내용
-    {body}
+    {announcement_body}
+    
+    {rfp_body}
     
     주의: JSON 응답만 출력하고, ```json 같은 코드 블록은 사용하지 마라.
     """.strip()
 
 # =========================================================
-# Gemini 호출 - 자격요건 체크리스트 생성 (JSON 반환)
+# Gemini 호출 - 자격요건 자동 판정
 # =========================================================
-def eligibility_checklist(
-    chunks: list[dict],
+def eligibility_judgment(
+    announcement_chunks: list[dict],
     source: str | None = None,
     model: str = "gemini-2.5-flash",
     temperature: float = 0.2,
     company_id: int | None = None,
 ) -> dict:
     """
-    공고문 자격요건을 분석하여 JSON 체크리스트 반환
+    공고문 자격요건을 분석하여 자동 판정 결과 반환
     
     Args:
-        chunks: 섹션별 텍스트 리스트
+        announcement_chunks: 공고문 텍스트 청크 리스트
         source: 공고 출처 (선택)
         model: Gemini 모델명
-        temperature: 생성 온도 (0.0~1.0)
+        temperature: 생성 온도
+        company_id: 기업 ID
     
     Returns:
-        dict: JSON 형식의 자격요건 체크리스트
+        dict: JSON 형식의 자격요건 자동 판정 결과
     """
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("환경변수 GEMINI_API_KEY가 설정되어 있지 않습니다.")
 
-    # =========================================================
-    # 회원가입에서 받는 정보(company_id)
-    # =========================================================
+    # company_id 설정
     if company_id is None:
         company_id = get_default_company_id()
+        if company_id is None:
+            raise RuntimeError("company_id를 찾을 수 없습니다.")
 
-    # =========================================================
-    # 회원가입에서 받는 정보(USER_ENTITY_TYPE) - DB에서 로딩
-    # =========================================================
-    set_user_entity_type(company_id)
+    # DB에서 사업보고서 섹션 JSON 조회
+    print(f"DB에서 사업보고서 조회 중... (company_id: {company_id})")
+    business_report_sections = load_business_report_from_db(company_id)
+    
+    print(f"✓ DB 조회 완료")
+    print(f"  - 섹션 수: {len(business_report_sections)}개")
 
     client = genai.Client(api_key=api_key)
-    prompt = checklist_prompts(chunks, source)
+    prompt = eligibility_prompt(announcement_chunks, business_report_sections, source)
 
+    print("\n자격요건 자동 판정 중...")
     response = client.models.generate_content(
         model=model,
         contents=prompt,
         config=genai.types.GenerateContentConfig(
-            system_instruction=SYSTEM_INSTRUCTION_CHECKLIST,
+            system_instruction=SYSTEM_INSTRUCTION_ELIGIBILITY,
             temperature=temperature,
         ),
     )
@@ -398,7 +378,7 @@ def eligibility_checklist(
     if not text:
         raise RuntimeError("모델 응답이 비어 있습니다.")
 
-    # JSON 파싱 (코드 블록 제거)
+    # JSON 파싱
     clean_text = text.strip()
     if clean_text.startswith("```json"):
         clean_text = clean_text[7:]
@@ -408,27 +388,31 @@ def eligibility_checklist(
         clean_text = clean_text[:-3]
     
     try:
-        return json.loads(clean_text.strip())
+        result = json.loads(clean_text.strip())
+        print("✓ 자격요건 판정 완료\n")
+        return result
     except json.JSONDecodeError as e:
         raise RuntimeError(f"JSON 파싱 실패: {e}\n응답 내용:\n{text}")
 
 # =========================================================
-# Gemini 호출 - 심층 분석 (JSON 반환)
+# Gemini 호출 - 심층 분석
 # =========================================================
 def deep_analysis(
-    chunks: list[dict],
+    announcement_chunks: list[dict],
+    rfp_chunks: list[dict] | None = None,
     source: str | None = None,
     model: str = "gemini-2.5-flash",
     temperature: float = 0.5,
 ) -> dict:
     """
-    공고문을 심층 분석하여 JSON 전략 리포트 반환
+    공고문과 RFP 양식을 심층 분석하여 전략 리포트 반환
     
     Args:
-        chunks: 섹션별 텍스트 리스트
+        announcement_chunks: 공고문 텍스트 청크 리스트
+        rfp_chunks: RFP 양식 텍스트 청크 리스트 (선택)
         source: 공고 출처 (선택)
         model: Gemini 모델명
-        temperature: 생성 온도 (0.0~1.0)
+        temperature: 생성 온도
     
     Returns:
         dict: JSON 형식의 심층 분석 리포트
@@ -438,8 +422,9 @@ def deep_analysis(
         raise RuntimeError("환경변수 GEMINI_API_KEY가 설정되어 있지 않습니다.")
     
     client = genai.Client(api_key=api_key)
-    prompt = analysis_prompts(chunks, source)
+    prompt = analysis_prompt(announcement_chunks, rfp_chunks, source)
     
+    print("공고문 심층 분석 중...")
     response = client.models.generate_content(
         model=model,
         contents=prompt,
@@ -453,7 +438,7 @@ def deep_analysis(
     if not text:
         raise RuntimeError("모델 응답이 비어 있습니다.")
     
-    # JSON 파싱 (코드 블록 제거)
+    # JSON 파싱
     clean_text = text.strip()
     if clean_text.startswith("```json"):
         clean_text = clean_text[7:]
@@ -463,20 +448,8 @@ def deep_analysis(
         clean_text = clean_text[:-3]
     
     try:
-        return json.loads(clean_text.strip())
+        result = json.loads(clean_text.strip())
+        print("✓ 심층 분석 완료\n")
+        return result
     except json.JSONDecodeError as e:
         raise RuntimeError(f"JSON 파싱 실패: {e}\n응답 내용:\n{text}")
-    
-# =========================================================
-# 회원가입에서 받는 정보(company_id) - 임시: 환경변수 고정
-# =========================================================
-def get_default_company_id() -> int:
-    """
-    임시 운영: .env의 DEFAULT_COMPANY_ID로 회사 고정
-    (추후: 로그인 유저 -> company_id 조회로 교체)
-    """
-    return 1 # [임시 수정] Mock ID
-    # v = os.environ.get("DEFAULT_COMPANY_ID")
-    # if not v: 
-    #     raise RuntimeError("환경변수 DEFAULT_COMPANY_ID가 설정되어 있지 않습니다.")
-    # return int(v)
