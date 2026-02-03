@@ -5,4 +5,9 @@ google-genai
 langgraph
 mysql-connector-python
 python-pptx
-cssutils
+fastapi
+uvicorn
+pymysql
+python-multipart
+requests
+chromadb

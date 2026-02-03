@@ -1,9 +1,15 @@
-# python venv
-.venv/
-data/
-debug_analysis_result.json
-features/ppt_maker/nodes_code/test_outputs/
+# 보안 및 가상환경
+.env
 venv/
+.venv/
 __pycache__/
 *.pyc
-.env
+config.py
+
+# 데이터 및 실행 결과물 (Push 제외 권장)
+data/
+full_dist_cache.json
+analysis_cache.json
+debug_analysis_result.json
+*.png
+features/ppt_maker/nodes_code/test_outputs/

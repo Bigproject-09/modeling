@@ -9,7 +9,7 @@ from google.genai import types
 from .state import GraphState
 
 # [수정 1] 루트 폴더의 함수들을 직접 import
-from document_parsing import parse_docx_to_blocks, extract_text_from_pdf
+from utils.document_parsing import parse_docx_to_blocks, extract_text_from_pdf
 
 load_dotenv()
 

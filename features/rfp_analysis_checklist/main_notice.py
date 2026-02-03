@@ -12,8 +12,8 @@ project_root = os.path.dirname(parent_dir)                # .../MODELING (루트
 # 시스템 경로에 프로젝트 루트 추가 (그래야 document_parsing, section을 찾음)
 sys.path.append(project_root)
 from dotenv import load_dotenv
-from document_parsing import parse_docx_to_blocks, extract_text_from_pdf
-from section import SectionSplitter, verify_sections
+from utils.document_parsing import parse_docx_to_blocks, extract_text_from_pdf
+from utils.section import SectionSplitter, verify_sections
 from notice_llm import eligibility_checklist, deep_analysis
 
 load_dotenv()
@@ -28,7 +28,7 @@ def classify_file(filename):
     filename_lower = filename.lower()
     
     # 자격요건 키워드
-    if any(keyword in filename_lower for keyword in ['자격요건', '자격', 'eligibility', '요건']):
+    if any(keyword in filename_lower for keyword in ['사업보고서', '사업 보고서', '재무제표']):
         return 'eligibility'
     
     # RFP 키워드

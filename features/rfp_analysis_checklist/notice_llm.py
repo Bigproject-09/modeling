@@ -2,7 +2,7 @@ import os
 import json
 from dotenv import load_dotenv
 from google import genai
-import mysql.connector
+# import mysql.connector
 
 # .env 파일 로드
 load_dotenv()
@@ -99,25 +99,28 @@ def load_user_entity_type(company_id: int) -> str:
     """
     companies 테이블에서 user_entity_type을 조회
     """
-    conn = get_db_conn()
-    cur = None
-    try:
-        cur = conn.cursor()
-        # SQL 덤프 기준 PK는 company_id
-        cur.execute(
-            "SELECT user_entity_type FROM companies WHERE company_id = %s",
-            (company_id,),
-        )
-        row = cur.fetchone()
-        if not row:
-            return "UNKNOWN"
-        return normalize_user_entity_type(row[0])
-    finally:
-        try:
-            if cur:
-                cur.close()
-        finally:
-            conn.close()
+    # [임시 수정] DB 연동 부분 주석 처리 및 하드코딩 리턴
+    return "영리"
+
+    # conn = get_db_conn()
+    # cur = None
+    # try:
+    #     cur = conn.cursor()
+    #     # SQL 덤프 기준 PK는 company_id
+    #     cur.execute(
+    #         "SELECT user_entity_type FROM companies WHERE company_id = %s",
+    #         (company_id,),
+    #     )
+    #     row = cur.fetchone()
+    #     if not row:
+    #         return "UNKNOWN"
+    #     return normalize_user_entity_type(row[0])
+    # finally:
+    #     try:
+    #         if cur:
+    #             cur.close()
+    #     finally:
+    #         conn.close()
 
 def set_user_entity_type(company_id: int) -> None:
     """
@@ -472,7 +475,8 @@ def get_default_company_id() -> int:
     임시 운영: .env의 DEFAULT_COMPANY_ID로 회사 고정
     (추후: 로그인 유저 -> company_id 조회로 교체)
     """
-    v = os.environ.get("DEFAULT_COMPANY_ID")
-    if not v:
-        raise RuntimeError("환경변수 DEFAULT_COMPANY_ID가 설정되어 있지 않습니다.")
-    return int(v)
+    return 1 # [임시 수정] Mock ID
+    # v = os.environ.get("DEFAULT_COMPANY_ID")
+    # if not v: 
+    #     raise RuntimeError("환경변수 DEFAULT_COMPANY_ID가 설정되어 있지 않습니다.")
+    # return int(v)
