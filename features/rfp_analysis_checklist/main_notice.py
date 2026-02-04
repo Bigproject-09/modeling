@@ -14,7 +14,7 @@ sys.path.append(project_root)
 from dotenv import load_dotenv
 from utils.document_parsing import parse_docx_to_blocks, extract_text_from_pdf
 from utils.section import SectionSplitter, verify_sections
-from notice_llm import eligibility_checklist, deep_analysis
+from .notice_llm import eligibility_checklist, deep_analysis
 
 load_dotenv()
 

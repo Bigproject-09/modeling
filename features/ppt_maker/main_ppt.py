@@ -18,7 +18,7 @@ from features.ppt_maker.nodes_code.utilization_node import utilization_node
 # from features.ppt_maker.nodes_code.agency_intro_node import agency_intro_node
 # from features.ppt_maker.nodes_code.image_generation_node import image_generation_node
 from features.ppt_maker.nodes_code.sort_node import sort_node
-from features.ppt_maker.nodes_code.ppt_generation_node import ppt_generation_node
+from features.ppt_maker.nodes_code.ppt_generation_node import generate_ppt_node
 
 load_dotenv()
 
@@ -49,7 +49,7 @@ def build_graph():
     workflow.add_node("sort", sort_node)
     
     # Phase 5: PPT 파일 생성 (1개 노드)
-    workflow.add_node("generate_ppt", ppt_generation_node)
+    workflow.add_node("generate_ppt", generate_ppt_node)
     
     # 3. 엣지(Edge) 설정
     # 시작 -> analyze
