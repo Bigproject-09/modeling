@@ -1,3 +1,4 @@
+#document_parsing.py
 import json
 import os
 import re
@@ -13,7 +14,7 @@ from typing import Dict, List, Any, Optional
 NS = {
     "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
     "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
-    "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+    "a": "http://schemas.openxmlformats.org/#ddrawingml/2006/main",
     "wp": "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
     "v": "urn:schemas-microsoft-com:vml",
     "wps": "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",

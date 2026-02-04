@@ -5,26 +5,19 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 load_dotenv()
-from document_api import ingest_to_db, API_KEY
-from parsing import parse_file_to_json
+
+# ✅ 수정: utils/document_parsing.py에서 import
+from utils.document_parsing import parse_docx_to_blocks, extract_text_from_pdf
 
 app = FastAPI()
 
 
 # =========================
-# 기업마당 공고 수집
+# ❌ 삭제: 공고 수집 엔드포인트 (Spring에서 처리)
 # =========================
-@app.post("/collect/notices")
-def collect_notices():
-    """
-    기업마당 기술공고 수집
-    - document_api.ingest_to_db() 호출
-    - project_notices, notice_files, notice_hashtags 테이블에 저장
-    """
-    print("🔥 COLLECT CALLED")
-    inserted = ingest_to_db(API_KEY)
-    print(f"🔥 COLLECT DONE: {inserted}건 수집")
-    return {"inserted": inserted}
+# @app.post("/collect/notices")
+# def collect_notices():
+#     ...
 
 
 # =========================
@@ -54,13 +47,27 @@ async def parse_notice(file: UploadFile = File(...)):
             f.write(content)
 
         # 2️⃣ 파싱
-        parsed = parse_file_to_json(tmp_path)
+        if ext == ".pdf":
+            result = {
+                "file_type": "pdf",
+                "pages": extract_text_from_pdf(tmp_path)
+            }
+        elif ext == ".docx":
+            result = {
+                "file_type": "docx",
+                "content": parse_docx_to_blocks(tmp_path, "tmp")
+            }
+        else:
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"Unsupported extension: {ext}"}
+            )
 
         print(f"✅ PARSE SUCCESS: {file.filename}")
 
         # 3️⃣ 파싱 결과만 반환 (DB 저장은 Spring에서)
         return JSONResponse(
-            content=parsed,
+            content=result,
             status_code=200
         )
 
@@ -87,7 +94,7 @@ def health_check():
 
 
 # =========================
-# 파싱 상태 조회 (선택사항)
+# 파싱 지원 형식 조회
 # =========================
 @app.get("/parse/formats")
 def supported_formats():
@@ -98,11 +105,15 @@ def supported_formats():
         "supported_formats": [".pdf", ".docx"],
         "max_file_size_mb": 50
     }
+
+
+# =========================
+# 도현님 추가 엔드포인트
+# =========================
 from pydantic import BaseModel
 from features.rnd_search.main_search import main as run_search
 from features.ppt_script.main_script import main as run_script_gen
 
-# --- [도현님 추가] API 엔드포인트 ---
 class AnalyzeRequest(BaseModel):
     notice_id: int
 
@@ -117,6 +128,7 @@ def api_run_step4():
     print("[Step 4] 대본 생성 요청")
     run_script_gen()
     return {"status": "success", "message": "대본 생성 완료"}
+
 
 if __name__ == "__main__":
     import uvicorn
