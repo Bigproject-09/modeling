@@ -10,6 +10,10 @@ pymysql
 python-multipart
 requests
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+=======
+chromadb
+>>>>>>> Stashed changes
 =======
 chromadb
 >>>>>>> Stashed changes
