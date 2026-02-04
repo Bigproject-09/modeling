@@ -3,7 +3,7 @@ import json
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from .state import GraphState, SlideState
+from nodes_code.state import GraphState, SlideState
 
 load_dotenv()
 

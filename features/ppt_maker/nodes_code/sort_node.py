@@ -11,7 +11,7 @@
 """
 
 from typing import List
-from .state import GraphState, SlideState
+from nodes_code..state import GraphState, SlideState
 
 
 def sort_node(state: GraphState) -> dict:
