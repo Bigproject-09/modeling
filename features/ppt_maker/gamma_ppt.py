@@ -972,9 +972,10 @@
 #     main()
 
 """
-R&D 제안서 PPT 자동 생성 (단일 API 호출 - 토큰 제한 해결)
-- inputText 길이 최적화
-- 핵심 내용만 전달
+R&D 제안서 PPT 자동 생성 (단일 API 호출 - 최종 버전)
+- 섹션 순서 보장
+- PPTX 생성 대기 로직 추가
+- 토큰 길이 최적화
 """
 import os
 import sys
@@ -1024,7 +1025,7 @@ class Config:
         "기대성과 및 활용방안": ["연구개발성과의 활용방안", "기대효과"]
     }
     
-    # 섹션별 최대 글자 수 제한 (총 합계를 50,000자 이하로 유지)
+    # 섹션별 최대 글자 수 제한
     SECTION_MAX_CHARS = {
         "연구 개요": 3000,
         "연구 필요성": 5000,
@@ -1132,43 +1133,46 @@ def build_unified_prompt(
     section_contents: Dict[str, str]
 ) -> tuple[str, str]:
     """
-    모든 섹션을 하나의 통합 프롬프트로 구성 (길이 최적화)
+    모든 섹션을 하나의 통합 프롬프트로 구성 (순서 보장)
     """
     company_name = company_info["company_name"]
     business_report = company_info["business_report"]
     
-    # 기관 정보 간소화 (타입 체크 추가)
+    # 기관 정보 간소화
     report_summary = f"{company_name}의 주요 사업 분야 및 역량"
     
     if business_report:
         if isinstance(business_report, dict):
-            # 딕셔너리인 경우
             report_summary += ": " + ", ".join(list(business_report.keys())[:5])
         elif isinstance(business_report, list):
-            # 리스트인 경우
             report_summary += ": " + ", ".join([str(item)[:50] for item in business_report[:3]])
         else:
-            # 기타 타입
             report_summary += ": " + str(business_report)[:200]
     
-    # 입력 텍스트 구성 (길이 제한)
+    # 입력 텍스트 구성 (섹션 구분자 추가로 순서 보장)
     input_text_parts = []
     
     # 1. 표지
     input_text_parts.append(f"# {announcement_title}\n\n연구개발 제안서")
     
-    # 2. 기관 소개 (간소화)
-    input_text_parts.append(f"\n\n# 수행 기관 소개\n\n## {company_name}\n\n{report_summary}")
+    # 섹션 구분자
+    input_text_parts.append("\n---\n")
     
-    # 3. 각 섹션 내용 추가 (길이 제한 적용)
-    for section_name in ["연구 개요", "연구 필요성", "연구 목표", "연구 내용", "추진 계획", "기대성과 및 활용방안"]:
+    # 2. 기관 소개
+    input_text_parts.append(f"# 수행 기관 소개\n\n## {company_name}\n\n{report_summary}")
+    
+    # 3. 각 섹션 내용 추가 (순서대로, 구분자로 분리)
+    section_order = ["연구 개요", "연구 필요성", "연구 목표", "연구 내용", "추진 계획", "기대성과 및 활용방안"]
+    
+    for section_name in section_order:
         content = section_contents.get(section_name, "")
         if content:
+            input_text_parts.append("\n---\n")
             max_chars = config.SECTION_MAX_CHARS.get(section_name, 5000)
             truncated_content = truncate_content(content, max_chars)
-            input_text_parts.append(f"\n\n# {section_name}\n\n{truncated_content}")
+            input_text_parts.append(f"# {section_name}\n\n{truncated_content}")
     
-    input_text = "\n".join(input_text_parts)
+    input_text = "".join(input_text_parts)
     
     # 간소화된 추가 지시사항
     additional_instructions = """프레젠테이션 규칙:
@@ -1189,9 +1193,36 @@ def build_unified_prompt(
 - 추진 계획: 조직도 (1개 총괄 + 4개 세부과제 박스, 연결선 표시)
 - 기대성과: Value Chain 다이어그램
 
-대상 독자: 연구비 심사위원"""
+대상 독자: 연구비 심사위원
+중요: 입력 텍스트의 섹션 순서를 그대로 유지할 것"""
     
     return input_text, additional_instructions
+
+def _extract_pptx_url(result: Dict) -> Optional[str]:
+    """
+    다양한 위치에서 PPTX URL 추출
+    """
+    # 1. 직접 pptxUrl 필드
+    if result.get("pptxUrl"):
+        return result["pptxUrl"]
+    
+    # 2. exports 배열 안에서 찾기
+    exports = result.get("exports", [])
+    if isinstance(exports, list):
+        for export in exports:
+            if isinstance(export, dict):
+                if export.get("format") == "pptx" and export.get("url"):
+                    return export["url"]
+    
+    # 3. export 객체 안에서 찾기
+    export_obj = result.get("export", {})
+    if isinstance(export_obj, dict):
+        if export_obj.get("pptx"):
+            return export_obj["pptx"]
+        if export_obj.get("pptxUrl"):
+            return export_obj["pptxUrl"]
+    
+    return None
 
 def call_gamma_unified_api(
     input_text: str,
@@ -1209,9 +1240,10 @@ def call_gamma_unified_api(
     
     payload = {
         "inputText": input_text,
-        "textMode": "condense",  # 요약 모드
+        "textMode": "condense",
         "format": "presentation",
         "numCards": estimated_cards,
+        "cardSplit": "inputTextBreaks",  # 섹션 순서 보장
         "additionalInstructions": additional_instructions,
         "exportAs": "pptx",
         "textOptions": {
@@ -1222,7 +1254,6 @@ def call_gamma_unified_api(
         },
         "imageOptions": {
             "source": "aiGenerated",
-            "model": "dall-e-3",
             "style": "professional diagrams, infographics, technical charts, clean design, 16:9 aspect ratio"
         },
         "cardOptions": {
@@ -1234,6 +1265,7 @@ def call_gamma_unified_api(
         print(f"  API 호출 중... (예상 슬라이드: {estimated_cards}장)")
         print(f"  입력 텍스트 길이: {len(input_text):,}자")
         print(f"  추가 지시사항 길이: {len(additional_instructions):,}자")
+        print(f"  섹션 순서: cardSplit=inputTextBreaks (구분자 기준)")
         
         response = requests.post(url, headers=headers, json=payload, timeout=60)
         
@@ -1253,12 +1285,17 @@ def call_gamma_unified_api(
         return None, str(e)
 
 def poll_gamma_status(generation_id: str, max_wait: int = 600) -> Optional[Dict]:
-    """상태 폴링"""
+    """
+    상태 폴링 (PPTX 생성 대기 로직 포함)
+    """
     url = f"{config.GAMMA_API_BASE}/generations/{generation_id}"
     headers = {"X-API-KEY": config.GAMMA_API_KEY}
     
     start_time = time.time()
     print(f"  생성 대기", end="", flush=True)
+    
+    pptx_wait_count = 0
+    max_pptx_wait = 60  # PPTX 생성을 위한 추가 대기 시간 (초)
     
     while time.time() - start_time < max_wait:
         try:
@@ -1267,22 +1304,45 @@ def poll_gamma_status(generation_id: str, max_wait: int = 600) -> Optional[Dict]
             status = result.get("status")
             
             if status == "completed":
-                print(f" 완료")
-                return {
-                    "status": "completed",
-                    "gammaUrl": result.get("gammaUrl"),
-                    "gammaId": result.get("gammaId"),
-                    "pptxUrl": result.get("pptxUrl")
-                }
+                # 완료되었지만 PPTX URL이 없으면 추가 대기
+                pptx_url = _extract_pptx_url(result)
+                
+                if pptx_url:
+                    print(f" 완료 (PPTX 생성됨)")
+                    return {
+                        "status": "completed",
+                        "gammaUrl": result.get("gammaUrl"),
+                        "gammaId": result.get("gammaId"),
+                        "pptxUrl": pptx_url
+                    }
+                else:
+                    # PPTX가 아직 없으면 추가 대기
+                    if pptx_wait_count < max_pptx_wait:
+                        print("P", end="", flush=True)  # P = PPTX 대기 중
+                        pptx_wait_count += 1
+                        time.sleep(1)
+                        continue
+                    else:
+                        # 최대 대기 시간 초과
+                        print(f" 완료 (PPTX 생성 시간 초과)")
+                        return {
+                            "status": "completed",
+                            "gammaUrl": result.get("gammaUrl"),
+                            "gammaId": result.get("gammaId"),
+                            "pptxUrl": None,
+                            "warning": "PPTX URL을 찾을 수 없음"
+                        }
+            
             elif status == "failed":
                 print(f" 실패")
                 return {"status": "failed", "error": result.get("error")}
             
             print(".", end="", flush=True)
             time.sleep(5)
+            
         except Exception as e:
             print(f"\n  폴링 오류: {e}")
-            pass
+            time.sleep(5)
     
     print(f" 타임아웃")
     return None
@@ -1303,7 +1363,7 @@ def download_pptx_file(url: str, filename: str) -> bool:
 
 def main():
     print("=" * 80)
-    print("R&D 제안서 PPT 자동 생성 (단일 API 호출 - 토큰 최적화)")
+    print("R&D 제안서 PPT 자동 생성 (섹션 순서 보장 + PPTX 대기)")
     print("=" * 80)
     
     # 1. PDF 찾기
@@ -1335,7 +1395,7 @@ def main():
             truncated = truncate_content(content, max_chars)
             section_contents[section_name] = truncated
             total_chars += len(truncated)
-            print(f"  {section_name}: {len(content):,}자 → {len(truncated):,}자 (제한: {max_chars:,}자)")
+            print(f"  {section_name}: {len(content):,}자 → {len(truncated):,}자")
         else:
             print(f"  {section_name}: 건너뜀")
     
@@ -1354,11 +1414,11 @@ def main():
     print(f"  최종 입력 텍스트: {len(input_text):,}자")
     print(f"  추가 지시사항: {len(additional_instructions):,}자")
     print(f"  예상 슬라이드: {estimated_cards}장")
+    print(f"  섹션 구분자 개수: {input_text.count('---')}개")
     
     # 6. 단일 API 호출
     print(f"\n6단계: PPT 생성")
     print(f"  테마: 기본 테마")
-    print(f"  이미지 모델: DALL-E 3")
     
     gen_id, error = call_gamma_unified_api(
         input_text=input_text,
@@ -1388,11 +1448,16 @@ def main():
     pptx_url = result.get("pptxUrl")
     
     print(f"Gamma URL: {gamma_url}")
-    print(f"PPTX URL: {pptx_url}")
+    print(f"PPTX URL: {pptx_url if pptx_url else '생성되지 않음'}")
+    
+    if result.get("warning"):
+        print(f"경고: {result['warning']}")
     
     # PPTX 다운로드
     if pptx_url:
         download_pptx_file(pptx_url, f"{pdf_path.stem}_complete.pptx")
+    else:
+        print("  PPTX 파일을 다운로드할 수 없습니다. Gamma 웹사이트에서 수동으로 다운로드하세요.")
     
     # 9. URL 저장
     output_json = config.OUTPUT_PPTX_DIR / "gamma_urls.json"
@@ -1403,7 +1468,8 @@ def main():
             "pptx_url": pptx_url,
             "generation_id": gen_id,
             "estimated_cards": estimated_cards,
-            "input_text_length": len(input_text)
+            "input_text_length": len(input_text),
+            "section_breaks": input_text.count('---')
         }, f, ensure_ascii=False, indent=2)
     
     print(f"\nURL 저장: {output_json}")
