@@ -21,9 +21,9 @@ def collect_notices():
     - document_api.ingest_to_db() 호출
     - project_notices, notice_files, notice_hashtags 테이블에 저장
     """
-    print("🔥 COLLECT CALLED")
+    print("COLLECT CALLED")
     inserted = ingest_to_db(API_KEY)
-    print(f"🔥 COLLECT DONE: {inserted}건 수집")
+    print(f"COLLECT DONE: {inserted}건 수집")
     return {"inserted": inserted}
 
 
@@ -41,31 +41,31 @@ async def parse_notice(file: UploadFile = File(...)):
     3. FastAPI: 파싱 수행 후 결과 JSON 반환 ← 이 함수
     4. Spring Boot: NoticeAttachment.markDone(parsedJson) 호출
     """
-    print(f"🔥 PARSE CALLED: {file.filename}")
+    print(f"PARSE CALLED: {file.filename}")
 
     os.makedirs("tmp", exist_ok=True)
     ext = os.path.splitext(file.filename)[1].lower()
     tmp_path = os.path.join("tmp", f"{uuid.uuid4().hex}{ext}")
 
     try:
-        # 1️⃣ 파일 임시 저장
+        # 파일 임시 저장
         content = await file.read()
         with open(tmp_path, "wb") as f:
             f.write(content)
 
-        # 2️⃣ 파싱
+        # 파싱
         parsed = parse_file_to_json(tmp_path)
 
-        print(f"✅ PARSE SUCCESS: {file.filename}")
+        print(f"PARSE SUCCESS: {file.filename}")
 
-        # 3️⃣ 파싱 결과만 반환 (DB 저장은 Spring에서)
+        # 파싱 결과만 반환 (DB 저장은 Spring에서)
         return JSONResponse(
             content=parsed,
             status_code=200
         )
 
     except Exception as e:
-        print(f"❌ PARSE FAILED: {file.filename} - {str(e)}")
+        print(f"PARSE FAILED: {file.filename} - {str(e)}")
         
         return JSONResponse(
             status_code=500,
