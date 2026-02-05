@@ -98,25 +98,52 @@ def supported_formats():
         "supported_formats": [".pdf", ".docx"],
         "max_file_size_mb": 50
     }
-from pydantic import BaseModel
-from features.rnd_search.main_search import main as run_search
-from features.ppt_script.main_script import main as run_script_gen
 
-# --- [도현님 추가] API 엔드포인트 ---
-class AnalyzeRequest(BaseModel):
+# ===== 분석 API =====
+from pydantic import BaseModel
+
+class Step1Request(BaseModel):
+    notice_id: int
+    company_id: int = 4
+
+class NoticeOnlyRequest(BaseModel):
     notice_id: int
 
+@app.post("/api/analyze/step1")
+def api_run_step1(req: Step1Request):
+    from features.rfp_analysis_checklist.main_notice import run_notice_step1
+    print("RAW REQ:", req.model_dump())
+    print(f"[Step 1] 분석 요청: notice_id={req.notice_id}, company_id={req.company_id}")
+    result = run_notice_step1(notice_id=req.notice_id, company_id=req.company_id)
+    return {"status": "success", "data": result}
+
 @app.post("/api/analyze/step2")
-def api_run_step2(req: AnalyzeRequest):
-    print(f"[Step 2] 분석 요청: notice_id={req.notice_id}")
+def api_run_step2(req: NoticeOnlyRequest):
+    from features.rnd_search.main_search import main as run_search
+    print(f"[Step 2] 유사 RFP 검색 요청: notice_id={req.notice_id}")
     result = run_search(notice_id=req.notice_id)
     return {"status": "success", "data": result}
 
+@app.post("/api/analyze/step3")
+def api_run_step3(req: NoticeOnlyRequest):
+    # Step3는 호출될 때만 import → nodes_code 없어도 Step1 서버는 뜸
+    from features.ppt_maker.main_ppt import main as run_ppt_maker
+    print(f"[Step 3] PPT 생성 요청: notice_id={req.notice_id}")
+    try:
+        result = run_ppt_maker(notice_id=req.notice_id)
+    except TypeError:
+        result = run_ppt_maker()
+    return {"status": "success", "data": result}
+
 @app.post("/api/analyze/step4")
-def api_run_step4():
-    print("[Step 4] 대본 생성 요청")
-    run_script_gen()
-    return {"status": "success", "message": "대본 생성 완료"}
+def api_run_step4(req: NoticeOnlyRequest):
+    from features.ppt_script.main_script import main as run_script_gen
+    print(f"[Step 4] 대본 생성 요청: notice_id={req.notice_id}")
+    try:
+        result = run_script_gen(notice_id=req.notice_id)
+    except TypeError:
+        result = run_script_gen()
+    return {"status": "success", "data": result}
 
 if __name__ == "__main__":
     import uvicorn

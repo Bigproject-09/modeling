@@ -11,3 +11,4 @@ pymysql
 python-multipart
 requests
 chromadb
+sentence-transformers
