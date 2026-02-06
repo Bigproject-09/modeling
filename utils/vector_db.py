@@ -3,7 +3,10 @@ import re
 import chromadb
 from typing import List, Dict, Any
 from sentence_transformers import SentenceTransformer
+from dotenv import load_dotenv
 import sys
+
+load_dotenv()
 
 # 상위 폴더(modeling/)에서 agency_utils를 찾을 수 있도록 설정
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -16,8 +19,9 @@ try:
 except ImportError:
     def get_ministry_variants(name): return [name] if name else []
 
-# [경로 설정]
-CHROMA_DIR = r"C:\chroma_db"
+# [ChromaDB 설정 - HttpClient로 변경]
+CHROMA_HOST = os.getenv('CHROMA_HOST', 'localhost')
+CHROMA_PORT = int(os.getenv('CHROMA_PORT', 8001))
 COLLECTION_NAME = "strategy_chunks_norm"
 EMBED_MODEL_NAME = "intfloat/multilingual-e5-base"
 
@@ -30,23 +34,18 @@ def search_two_tracks(
     score_threshold: float = 0.0 
 ) -> Dict[str, List[Dict[str, Any]]]:
 
-    # DB 경로 확인 (백업 경로 체크 로직 유지)
-    db_path = CHROMA_DIR
-    if not os.path.exists(CHROMA_DIR):
-        backup_path = r"G:\내 드라이브\bigproject\chroma_db"
-        if os.path.exists(backup_path):
-             db_path = backup_path
-             print(f"[*] ChromaDB 연결(Backup): {db_path}")
-        else:
-             print(f"[경고] DB 경로를 찾을 수 없음: {CHROMA_DIR}")
-    else:
-        print(f"[*] ChromaDB 연결: {db_path}")
+    print(f"[*] ChromaDB 서버 연결: {CHROMA_HOST}:{CHROMA_PORT}")
     
     try:
-        client = chromadb.PersistentClient(path=db_path)
+        # PersistentClient → HttpClient로 변경
+        client = chromadb.HttpClient(
+            host=CHROMA_HOST,
+            port=CHROMA_PORT
+        )
         collection = client.get_collection(name=COLLECTION_NAME)
     except Exception as e:
-        print(f"[오류] ChromaDB 컬렉션 로드 실패: {e}")
+        print(f"[오류] ChromaDB 서버 연결 실패: {e}")
+        print(f"[힌트] ChromaDB 서버가 실행 중인지 확인하세요: chroma run --path C:\\chroma_db --port {CHROMA_PORT}")
         return {"track_a": [], "track_b": []}
 
     print(f"[*] 임베딩 모델 로드: {EMBED_MODEL_NAME}")
