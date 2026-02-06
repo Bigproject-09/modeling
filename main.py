@@ -14,9 +14,12 @@ from utils.document_parsing import parse_docx_to_blocks, extract_text_from_pdf
 app = FastAPI()
 
 # ChromaDB 클라이언트 초기화
+CHROMA_HOST = os.getenv('CHROMA_HOST', 'localhost')
+CHROMA_PORT = int(os.getenv('CHROMA_PORT', 8001))
+
 chroma_client = chromadb.HttpClient(
-    host='localhost',  # 같은 EC2 내부
-    port=8001          # ChromaDB 포트
+    host=CHROMA_HOST,
+    port=CHROMA_PORT
 )
 
 app.add_middleware(
