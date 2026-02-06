@@ -104,7 +104,7 @@ from pydantic import BaseModel
 
 class Step1Request(BaseModel):
     notice_id: int
-    company_id: int = 4
+    company_id: int = 1
 
 class NoticeOnlyRequest(BaseModel):
     notice_id: int
