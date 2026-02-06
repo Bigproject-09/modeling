@@ -8,6 +8,9 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware 
 from dotenv import load_dotenv
 load_dotenv()
+from document_api import ingest_to_db, API_KEY
+from parsing import parse_file_to_json
+
 
 from utils.document_parsing import parse_docx_to_blocks, extract_text_from_pdf
 
@@ -94,6 +97,12 @@ def add_documents(
 async def parse_notice(file: UploadFile = File(...)):
     """
     파일 파싱만 수행 (DB 저장은 Spring Boot에서 처리)
+    
+    Flow:
+    1. Spring Boot: NoticeFile 생성 + NoticeAttachment 생성 (WAIT 상태)
+    2. Spring Boot → FastAPI: 파일 전송
+    3. FastAPI: 파싱 수행 후 결과 JSON 반환 ← 이 함수
+    4. Spring Boot: NoticeAttachment.markDone(parsedJson) 호출
     """
     print(f"🔥 PARSE CALLED: {file.filename}")
 
@@ -103,6 +112,7 @@ async def parse_notice(file: UploadFile = File(...)):
 
     try:
         # 파일 임시 저장
+        # 1️⃣ 파일 임시 저장
         content = await file.read()
         with open(tmp_path, "wb") as f:
             f.write(content)
@@ -128,6 +138,14 @@ async def parse_notice(file: UploadFile = File(...)):
 
         return JSONResponse(
             content=result,
+        # 2️⃣ 파싱
+        parsed = parse_file_to_json(tmp_path)
+
+        print(f"✅ PARSE SUCCESS: {file.filename}")
+
+        # 3️⃣ 파싱 결과만 반환 (DB 저장은 Spring에서)
+        return JSONResponse(
+            content=parsed,
             status_code=200
         )
 
@@ -140,6 +158,7 @@ async def parse_notice(file: UploadFile = File(...)):
         )
 
     finally:
+        # 임시 파일 삭제
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
@@ -160,6 +179,22 @@ def supported_formats():
     }
 
 
+
+from pydantic import BaseModel
+
+class Step1Request(BaseModel):
+    notice_id: int
+    company_id: int = 1
+
+@app.post("/api/analyze/step1")
+def api_run_step1(req: Step1Request):
+    from features.rfp_analysis_checklist.main_notice import run_notice_step1
+    print("RAW REQ:", req.model_dump())
+    print(f"[Step 1] 분석 요청: notice_id={req.notice_id}, company_id={req.company_id}")
+    result = run_notice_step1(notice_id=req.notice_id, company_id=req.company_id)
+    return {"status": "success", "data": result}
+
+    
 # ============================================
 # RFP 검색 (수정된 버전)
 # ============================================

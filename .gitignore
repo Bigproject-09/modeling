@@ -12,3 +12,4 @@ full_dist_cache.json
 analysis_cache.json
 debug_analysis_result.json
 *.png
+features/ppt_maker/nodes_code/test_outputs/

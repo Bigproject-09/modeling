@@ -1,9 +1,19 @@
+<<<<<<< HEAD
 # main_ppt.py
 import os
+=======
+import sys
+import os
+
+# 1. 경로 설정
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
+>>>>>>> origin/jun_test
 from langgraph.graph import StateGraph, END
 from dotenv import load_dotenv
 
 # State 정의
+<<<<<<< HEAD
 from features.ppt_maker.nodes_code.state import GraphState
 
 # 노드들 import
@@ -19,6 +29,23 @@ from features.ppt_maker.nodes_code.utilization_node import utilization_node
 # from features.ppt_maker.nodes_code.image_generation_node import image_generation_node
 from features.ppt_maker.nodes_code.sort_node import sort_node
 from features.ppt_maker.nodes_code.ppt_generation_node import ppt_generation_node
+=======
+from nodes_code.state import GraphState
+
+# 노드들 import (위에서 sys.path가 설정되어야 내부에서 document_parsing import 가능)
+from nodes_code.lg_analysis_node import analyze_node
+from nodes_code.overview_node import overview_node
+from nodes_code.necessity_node import necessity_node
+from nodes_code.goal_node import goal_node
+from nodes_code.content_node import content_node
+from nodes_code.promotion_node import promotion_node
+from nodes_code.outcome_node import outcome_node
+from nodes_code.utilization_node import utilization_node
+from nodes_code.agency_intro_node import agency_intro_node
+# from nodes_code.image_generation_node import image_generation_node
+from nodes_code.sort_node import sort_node
+from nodes_code.ppt_generation_node import ppt_generation_node
+>>>>>>> origin/jun_test
 
 load_dotenv()
 
@@ -33,6 +60,7 @@ def build_graph():
     workflow.add_node("analyze", analyze_node)
     
     # Phase 2: 슬라이드 생성 (8개 노드 - 병렬 실행)
+<<<<<<< HEAD
     # workflow.add_node("overview", overview_node)
     workflow.add_node("necessity", necessity_node)
     # workflow.add_node("goal", goal_node)
@@ -41,6 +69,16 @@ def build_graph():
     workflow.add_node("outcome", outcome_node)
     workflow.add_node("utilization", utilization_node)
     # workflow.add_node("agency_intro", agency_intro_node)
+=======
+    workflow.add_node("overview", overview_node)
+    workflow.add_node("necessity", necessity_node)
+    workflow.add_node("goal", goal_node)
+    workflow.add_node("content", content_node)
+    workflow.add_node("promotion", promotion_node)
+    workflow.add_node("outcome", outcome_node)
+    workflow.add_node("utilization", utilization_node)
+    workflow.add_node("agency_intro", agency_intro_node)
+>>>>>>> origin/jun_test
     
     # Phase 3: 이미지 생성 (1개 노드)
     # workflow.add_node("image_gen", image_generation_node)
@@ -58,12 +96,21 @@ def build_graph():
     # analyze -> 8개 슬라이드 생성 노드로 분기 (병렬)
     workflow.add_edge("analyze", "overview")
     workflow.add_edge("analyze", "necessity")
+<<<<<<< HEAD
     # workflow.add_edge("analyze", "goal")
     # workflow.add_edge("analyze", "content")
     # workflow.add_edge("analyze", "promotion")
     workflow.add_edge("analyze", "outcome")
     workflow.add_edge("analyze", "utilization")
     # workflow.add_edge("analyze", "agency_intro")
+=======
+    workflow.add_edge("analyze", "goal")
+    workflow.add_edge("analyze", "content")
+    workflow.add_edge("analyze", "promotion")
+    workflow.add_edge("analyze", "outcome")
+    workflow.add_edge("analyze", "utilization")
+    workflow.add_edge("analyze", "agency_intro")
+>>>>>>> origin/jun_test
     
     # 모든 슬라이드 생성 완료 -> 이미지 생성
     # workflow.add_edge("overview", "image_gen")
@@ -147,13 +194,26 @@ def run_ppt_generation(rfp_text: str = ""):
 def main():
     """메인 실행 함수"""
     
+<<<<<<< HEAD
     # 환경변수 확인
     required_keys = ["GEMINI_API_KEY", "ANTHROPIC_API_KEY"]
+=======
+    # .env 파일 명시적 로드 (modeling 폴더 기준)
+    env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
+    load_dotenv(dotenv_path=env_path)
+    
+    # 환경변수 확인 (GEMINI_API_KEY만 필수)
+    required_keys = ["GEMINI_API_KEY"]
+>>>>>>> origin/jun_test
     missing = [k for k in required_keys if not os.environ.get(k)]
     
     if missing:
         print(f"환경변수 누락: {', '.join(missing)}")
+<<<<<<< HEAD
         print("   .env 파일에 API 키를 설정해주세요.")
+=======
+        print(f"   {env_path} 파일에 API 키를 설정해주세요.")
+>>>>>>> origin/jun_test
         return
     
     # PPT 생성 실행
