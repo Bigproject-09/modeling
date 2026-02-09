@@ -3,11 +3,7 @@ import json
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-<<<<<<< HEAD
-from state import GraphState, SlideState
-=======
 from nodes_code.state import GraphState, SlideState
->>>>>>> origin/jun_test
 
 load_dotenv()
 

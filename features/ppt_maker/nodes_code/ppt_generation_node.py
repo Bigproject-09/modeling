@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-import os
-import json
-=======
 # import os
 # import json
 # import re
@@ -1664,7 +1660,6 @@ PPT 자동 생성 v6.1 - SlideState 구조 대응
 import os
 import json
 import base64
->>>>>>> origin/jun_test
 from typing import List, Dict
 from datetime import datetime
 from dotenv import load_dotenv

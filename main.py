@@ -1,4 +1,4 @@
-# main.py (통합 버전)
+# main.py (정리된 버전)
 import os
 import uuid
 import requests
@@ -6,18 +6,17 @@ import chromadb
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware 
+from pydantic import BaseModel
 from dotenv import load_dotenv
-load_dotenv()
-from document_api import ingest_to_db, API_KEY
-from parsing import parse_file_to_json
 
+load_dotenv()
 
 from utils.document_parsing import parse_docx_to_blocks, extract_text_from_pdf
 
 app = FastAPI()
 
 # ============================================
-# ChromaDB 클라이언트 초기화 (팀원 추가 부분)
+# ChromaDB 클라이언트 초기화
 # ============================================
 CHROMA_HOST = os.getenv('CHROMA_HOST', 'localhost')
 CHROMA_PORT = int(os.getenv('CHROMA_PORT', 8001))
@@ -27,6 +26,9 @@ chroma_client = chromadb.HttpClient(
     port=CHROMA_PORT
 )
 
+# ============================================
+# CORS 설정
+# ============================================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5174", "http://localhost:3000"],
@@ -36,7 +38,7 @@ app.add_middleware(
 )
 
 # ============================================
-# ChromaDB 관련 엔드포인트 (팀원 추가 부분)
+# ChromaDB 관련 엔드포인트
 # ============================================
 @app.post("/api/chroma/collection/create")
 def create_collection(name: str):
@@ -89,12 +91,19 @@ def add_documents(
         return {"status": "error", "message": str(e)}
 
 # ============================================
-# 기존 기능들
-# ============================================
-
 # 파일 파싱 (DB 저장은 Spring에서)
+# ============================================
 @app.post("/parse")
 async def parse_notice(file: UploadFile = File(...)):
+    """
+    파일 파싱만 수행 (DB 저장은 Spring Boot에서 처리)
+    
+    Flow:
+    1. Spring Boot: NoticeFile 생성 + NoticeAttachment 생성 (WAIT 상태)
+    2. Spring Boot → FastAPI: 파일 전송
+    3. FastAPI: 파싱 수행 후 결과 JSON 반환 ← 이 함수
+    4. Spring Boot: NoticeAttachment.markDone(parsedJson) 호출
+    """
     print(f"🔥 PARSE CALLED: {file.filename}")
 
     os.makedirs("tmp", exist_ok=True)
@@ -102,23 +111,33 @@ async def parse_notice(file: UploadFile = File(...)):
     tmp_path = os.path.join("tmp", f"{uuid.uuid4().hex}{ext}")
 
     try:
+        # 파일 임시 저장
         content = await file.read()
         with open(tmp_path, "wb") as f:
             f.write(content)
 
-        # 지원하는 확장자 체크
-        if ext not in [".pdf", ".docx"]:
+        # 파싱
+        if ext == ".pdf":
+            result = {
+                "file_type": "pdf",
+                "pages": extract_text_from_pdf(tmp_path)
+            }
+        elif ext == ".docx":
+            result = {
+                "file_type": "docx",
+                "content": parse_docx_to_blocks(tmp_path, "tmp")
+            }
+        else:
             return JSONResponse(
                 status_code=400,
                 content={"error": f"Unsupported extension: {ext}"}
             )
 
-        # ✅ 파일을 JSON으로 파싱 (step 공통 사용 가능)
-        parsed = parse_file_to_json(tmp_path)
         print(f"✅ PARSE SUCCESS: {file.filename}")
 
+        # 파싱 결과만 반환 (DB 저장은 Spring에서)
         return JSONResponse(
-            content=parsed,
+            content=result,
             status_code=200
         )
 
@@ -133,15 +152,16 @@ async def parse_notice(file: UploadFile = File(...)):
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-
-
+# ============================================
 # 헬스체크
+# ============================================
 @app.get("/health")
 def health_check():
     return {"status": "ok", "message": "FastAPI is running"}
 
-
+# ============================================
 # 파싱 지원 형식 조회
+# ============================================
 @app.get("/parse/formats")
 def supported_formats():
     """지원하는 파일 형식 조회"""
@@ -150,10 +170,9 @@ def supported_formats():
         "max_file_size_mb": 50
     }
 
-
-
-from pydantic import BaseModel
-
+# ============================================
+# Step 1: RFP 분석 체크리스트
+# ============================================
 class Step1Request(BaseModel):
     notice_id: int
     company_id: int = 1
@@ -161,24 +180,20 @@ class Step1Request(BaseModel):
 @app.post("/api/analyze/step1")
 def api_run_step1(req: Step1Request):
     from features.rfp_analysis_checklist.main_notice import run_notice_step1
-    print("RAW REQ:", req.model_dump())
     print(f"[Step 1] 분석 요청: notice_id={req.notice_id}, company_id={req.company_id}")
     result = run_notice_step1(notice_id=req.notice_id, company_id=req.company_id)
     return {"status": "success", "data": result}
 
-    
 # ============================================
-# RFP 검색 (수정된 버전)
+# Step 2: RFP 검색
 # ============================================
-from pydantic import BaseModel
-from features.rnd_search.main_search import main as run_search
-from features.ppt_script.main_script import main as run_script_gen
-
 @app.post("/api/analyze/step2")
 async def api_run_step2(
     file: UploadFile = File(...),
     notice_id: int = Form(None)
 ):
+    from features.rnd_search.main_search import main as run_search
+    
     print(f"[Step 2] 유관 RFP 검색 요청")
     print(f"  - 파일: {file.filename}")
     print(f"  - notice_id: {notice_id}")
@@ -198,7 +213,6 @@ async def api_run_step2(
         
         if ext == ".pdf":
             pages = extract_text_from_pdf(tmp_path)
-            # ✅ 수정: pages가 리스트면 문자열로 변환
             if isinstance(pages, list):
                 parsed_text = "\n".join(str(p) for p in pages)
             else:
@@ -207,15 +221,12 @@ async def api_run_step2(
             
         elif ext == ".docx":
             blocks = parse_docx_to_blocks(tmp_path, "tmp")
-            # ✅ 수정: blocks가 dict나 list면 적절히 처리
             if isinstance(blocks, list):
-                # 리스트의 각 항목을 문자열로 변환
                 parsed_text = "\n".join(
                     str(b.get('text', '') if isinstance(b, dict) else b) 
                     for b in blocks
                 )
             elif isinstance(blocks, dict):
-                # dict면 'content' 키를 찾아서 사용
                 parsed_text = str(blocks.get('content', str(blocks)))
             else:
                 parsed_text = str(blocks)
@@ -243,7 +254,7 @@ async def api_run_step2(
     except Exception as e:
         import traceback
         print(f"  ❌ 오류: {str(e)}")
-        print(traceback.format_exc())  # ← 전체 에러 스택 출력
+        print(traceback.format_exc())
         return JSONResponse(
             status_code=500,
             content={"status": "error", "message": str(e)}
@@ -253,29 +264,34 @@ async def api_run_step2(
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-
 # ============================================
-# PPT 스크립트 생성
+# Step 4: PPT 스크립트 생성
 # ============================================
 @app.post("/api/analyze/step4")
 async def api_run_step4(
     file: UploadFile = File(...),
-    notice_id: int = None,
-    token: str = None
+    notice_id: int = Form(None),
+    token: str = Form(None)
 ):
     """
     Step 4: PPT 스크립트 생성 및 DB 저장
+    - PPT 파일을 받아서 발표 대본 및 Q&A 생성
+    - Spring Boot로 결과 전송하여 DB 저장
     """
+    from features.ppt_script.main_script import main as run_script_gen
+    
     print(f"[Step 4] 스크립트 생성 요청: {file.filename}, notice_id={notice_id}")
     
     os.makedirs("tmp", exist_ok=True)
     tmp_path = os.path.join("tmp", f"{uuid.uuid4().hex}.pptx")
     
     try:
+        # 파일 저장
         content = await file.read()
         with open(tmp_path, "wb") as f:
             f.write(content)
         
+        # 스크립트 생성
         result = run_script_gen(pptx_path=tmp_path)
         
         if result:
@@ -325,6 +341,9 @@ async def api_run_step4(
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
+# ============================================
+# 서버 실행
+# ============================================
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
