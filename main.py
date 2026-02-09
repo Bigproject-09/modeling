@@ -96,12 +96,14 @@ async def parse_notice(file: UploadFile = File(...)):
     4. Spring Boot: NoticeAttachment.markDone(parsedJson) 호출
     """
     print(f"PARSE CALLED: {file.filename}")
+    print(f"PARSE CALLED: {file.filename}")
 
     os.makedirs("tmp", exist_ok=True)
     ext = os.path.splitext(file.filename)[1].lower()
     tmp_path = os.path.join("tmp", f"{uuid.uuid4().hex}{ext}")
 
     try:
+        # 파일 임시 저장
         # 파일 임시 저장
         content = await file.read()
         with open(tmp_path, "wb") as f:
@@ -133,6 +135,7 @@ async def parse_notice(file: UploadFile = File(...)):
         )
 
     except Exception as e:
+        print(f"PARSE FAILED: {file.filename} - {str(e)}")
         print(f"PARSE FAILED: {file.filename} - {str(e)}")
         
         return JSONResponse(
