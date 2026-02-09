@@ -2,18 +2,185 @@
 공고문 분석 및 자격요건 자동 판정 시스템 (notice_llm)
 
 DB에 저장된 사업보고서 섹션 JSON을 조회하여:
-1. 공고문 자격요건 자동 판정 (가능/불가능/확인 필요)
-2. 공고문 + RFP 심층 분석 (수주 전략 리포트)
+1. 공고문 자격요건 자동 판정 (가능/불가능/확인 필요) + 법령 조항 참조
+2. 공고문 + RFP 심층 분석 (실무 기반 전략 리포트)
 """
 
 import os
 import json
+import re
+import platform
 from dotenv import load_dotenv
 from google import genai
 import mysql.connector
+import chromadb
+from sentence_transformers import SentenceTransformer
 
 # .env 파일 로드
 load_dotenv()
+
+# =========================================================
+# ChromaDB 설정
+# =========================================================
+CHROMA_DB_DIR = r"G:/내 드라이브/chroma_db_law"
+COLLECTION_NAME = "law_regulations"
+EMBED_MODEL_NAME = "intfloat/multilingual-e5-base"
+
+# 전역 캐시
+_chroma_client = None
+_chroma_collection = None
+_embed_model = None
+# =========================================================
+# ChromaDB 초기화
+# =========================================================
+def init_law_search():
+    """ChromaDB 및 임베딩 모델 초기화 (전역 캐싱)"""
+    global _chroma_client, _chroma_collection, _embed_model
+    
+    if _chroma_collection is not None and _embed_model is not None:
+        return _chroma_collection, _embed_model
+    
+    print("ChromaDB 초기화 중...")
+    
+    # ChromaDB 클라이언트
+    _chroma_client = chromadb.PersistentClient(path=CHROMA_DB_DIR)
+    _chroma_collection = _chroma_client.get_collection(name=COLLECTION_NAME)
+    
+    # 임베딩 모델
+    _embed_model = SentenceTransformer(EMBED_MODEL_NAME)
+    
+    print(f"✓ ChromaDB 로드 완료 (문서 수: {_chroma_collection.count()}개)")
+    
+    return _chroma_collection, _embed_model
+
+# =========================================================
+# 텍스트에서 법령명 추출
+# =========================================================
+def extract_law_names(text: str) -> list[str]:
+    """
+    텍스트에서 법령명 추출
+    
+    예: "중소기업기본법 제2조" → ["중소기업기본법"]
+    """
+    pattern = r'([가-힣\s]+(?:법|조치법|특별법|기본법|촉진법|지원법))'
+    matches = re.findall(pattern, text)
+    
+    # 중복 제거 및 정리
+    law_names = []
+    seen = set()
+    
+    for match in matches:
+        clean_name = match.strip()
+        if clean_name and clean_name not in seen and len(clean_name) > 2:
+            law_names.append(clean_name)
+            seen.add(clean_name)
+    
+    return law_names
+
+# =========================================================
+# 법령 조항 검색
+# =========================================================
+def search_law_regulations(
+    query_text: str,
+    top_k: int = 5,
+    score_threshold: float = 0.5
+) -> list[dict]:
+    """
+    ChromaDB에서 법령 조항 검색
+    
+    Args:
+        query_text: 검색 쿼리
+        top_k: 반환할 최대 결과 수
+        score_threshold: 유사도 임계값 (0~1)
+    
+    Returns:
+        [
+            {
+                "law_name": "중소기업기본법",
+                "article_number": "2",
+                "article_title": "중소기업자의 범위",
+                "content": "...",
+                "score": 0.85
+            }
+        ]
+    """
+    collection, model = init_law_search()
+    
+    # 쿼리 임베딩 생성
+    query_embedding = model.encode([f"query: {query_text}"]).tolist()
+    
+    # ChromaDB 검색
+    results = collection.query(
+        query_embeddings=query_embedding,
+        n_results=top_k,
+        include=["metadatas", "documents", "distances"]
+    )
+    
+    # 결과 정리
+    law_results = []
+    
+    for i in range(len(results['ids'][0])):
+        meta = results['metadatas'][0][i]
+        doc = results['documents'][0][i]
+        distance = results['distances'][0][i]
+        score = 1 - distance  # 거리를 유사도로 변환
+        
+        # 임계값 필터링
+        if score < score_threshold:
+            continue
+        
+        law_results.append({
+            "law_name": meta['law_name'],
+            "law_type": meta['law_type'],
+            "regulation_type": meta.get('regulation_type', ''),
+            "regulation_number": meta.get('regulation_number', ''),
+            "article_number": meta['article_number'],
+            "article_title": meta['article_title'],
+            "full_reference": meta.get('full_reference', ''),
+            "content": doc.replace("passage: ", ""),
+            "score": round(score * 100, 1)
+        })
+    
+    return law_results
+
+# =========================================================
+# 자격요건별 법령 검색
+# =========================================================
+def search_for_eligibility(requirement_text: str) -> list[dict]:
+    """
+    자격요건 텍스트에서 법령 검색
+    
+    Args:
+        requirement_text: 자격요건 텍스트
+    
+    Returns:
+        관련 법령 조항 리스트
+    """
+    # 1. 텍스트에서 법령명 추출 시도
+    law_names = extract_law_names(requirement_text)
+    
+    all_results = []
+    
+    # 2. 법령명이 있으면 법령별로 검색
+    if law_names:
+        for law_name in law_names[:5]:  # 최대 5개 법령
+            # 법령명으로 검색
+            results = search_law_regulations(
+                query_text=law_name,
+                top_k=2,  # 법령당 2개 조항
+                score_threshold=0.6
+            )
+            all_results.extend(results)
+    
+    # 3. 법령명이 없으면 텍스트 전체로 검색
+    if not all_results:
+        all_results = search_law_regulations(
+            query_text=requirement_text,
+            top_k=5,
+            score_threshold=0.5
+        )
+    
+    return all_results
 
 # =========================================================
 # DB 연결
@@ -83,122 +250,163 @@ def get_default_company_id() -> int | None:
 # 시스템 프롬프트 - 자격요건 자동 판정
 # =========================================================
 SYSTEM_INSTRUCTION_ELIGIBILITY = """
-    너는 R&D 공고문 자격요건 자동 판정 전문가다.
-    반드시 한국어로 답하고, JSON 형식으로 출력한다.
+너는 R&D 공고문 자격요건 자동 판정 전문가다.
+반드시 한국어로 답하고, JSON 형식으로 출력한다.
 
-    너의 역할:
-    1. 공고문에서 모든 자격요건을 추출한다
-    2. 제공된 사업보고서 정보와 각 자격요건을 비교한다
-    3. 각 요건에 대해 '가능'/'불가능'/'확인 필요'로 자동 판정한다
-    4. 판정 근거로 공고문 원문을 그대로 인용하고, 상세한 판단 이유를 제공한다
+너의 역할:
+1. 공고문에서 모든 자격요건을 추출한다
+2. 제공된 법령 조항과 사업보고서 정보를 종합하여 각 자격요건을 비교한다
+3. 각 요건에 대해 '가능'/'불가능'/'확인 필요'로 자동 판정한다
+4. 판정 근거로 법령 조항 및 공고문 원문을 인용하고, 상세한 판단 이유를 제공한다
 
-    자동판정 규칙:
-    - 가능: 사업보고서 정보가 자격요건을 명확히 충족
-    - 불가능: 사업보고서 정보가 자격요건을 명확히 불충족
-    - 확인 필요: 제공된 정보만으로는 판단 불가능하거나, 사용자가 추가 확인 필요
+자동판정 규칙:
+- 가능: 법령 조항 및 사업보고서 정보가 자격요건을 명확히 충족
+- 불가능: 법령 조항 및 사업보고서 정보가 자격요건을 명확히 불충족
+- 확인 필요: 제공된 정보만으로는 판단 불가능하거나, 사용자가 추가 확인 필요
 
-    재무 상태 판단 가이드:
-    - 자본잠식: 재무제표에서 자본총계가 0 이하이면 자본전액잠식
-    - 감사의견: 감사보고서에서 '의견거절', '부적정', '한정', '적정' 중 하나를 확인
-    - 채무불이행: 사업보고서에 명시된 경우에만 판정 가능
-    - 재무제표가 있으면 반드시 자본총계, 부채총계, 자산총계를 확인하여 판단
+법령 조항 활용:
+- 제공된 법령 조항을 우선적으로 참고하여 판정
+- 법령 조항이 자격요건의 근거가 되는 경우 반드시 인용
+- 법령 조항과 사업보고서 정보를 종합하여 판단
 
-    출력 형식 (JSON):
+재무 상태 판단 가이드:
+- 자본잠식: 재무제표에서 자본총계가 0 이하이면 자본전액잠식
+- 감사의견: 감사보고서에서 '의견거절', '부적정', '한정', '적정' 중 하나를 확인
+- 채무불이행: 사업보고서에 명시된 경우에만 판정 가능
+- 재무제표가 있으면 반드시 자본총계, 부채총계, 자산총계를 확인하여 판단
+
+출력 형식 (JSON):
+{
+  "title": "자격요건 자동 판정 결과",
+  "overall_eligibility": {
+    "status": "가능|불가능|확인 필요",
+    "summary": "전체 판정을 2-3문장으로 요약"
+  },
+  "judgments": [
     {
-      "title": "자격요건 자동 판정 결과",
-      "overall_eligibility": {
-        "status": "가능|불가능|확인 필요",
-        "summary": "전체 판정을 2-3문장으로 요약"
-      },
-      "judgments": [
-        {
-          "id": 1,
-          "category": "신청주체 유형",
-          "requirement_text": "공고문의 해당 자격요건 원문을 그대로 인용",
-          "judgment": "가능|불가능|확인 필요",
-          "reason": "판정 근거를 구체적이고 명확하게 설명. 사업보고서의 어떤 부분을 보고 어떻게 판단했는지 상세히 기술. 재무 관련 판단 시 구체적인 수치 명시",
-          "company_info_used": "판정에 사용된 사업보고서 정보 (예: 자본총계 15,877백만원, 감사의견 '적정' 등)",
-          "quote_from_announcement": "판정 근거가 된 공고문 원문을 정확히 인용",
-          "additional_action": "가능이면 null, 불가능이면 구체적인 사유, 확인 필요면 무엇을 어떻게 확인해야 하는지 안내"
-        }
-      ],
-      "warning_items": [
-        "특별히 주의해야 할 사항"
-      ],
-      "missing_info": [
-        "판정에 필요하지만 사업보고서에서 찾을 수 없는 정보"
-      ],
-      "recommendations": [
-        "신청 전 권장사항"
-      ]
+      "id": 1,
+      "category": "신청주체 유형",
+      "requirement_text": "공고문의 해당 자격요건 원문을 그대로 인용",
+      "judgment": "가능|불가능|확인 필요",
+      "reason": "판정 근거를 구체적이고 명확하게 설명. 법령 조항과 사업보고서의 어떤 부분을 보고 어떻게 판단했는지 상세히 기술",
+      "related_law": "참고한 법령 조항 (예: 중소기업기본법 제2조)",
+      "company_info_used": "판정에 사용된 사업보고서 정보",
+      "quote_from_announcement": "판정 근거가 된 공고문 원문을 정확히 인용",
+      "additional_action": "가능이면 null, 불가능이면 구체적인 사유, 확인 필요면 무엇을 어떻게 확인해야 하는지 안내"
     }
+  ],
+  "warning_items": [
+    "특별히 주의해야 할 사항"
+  ],
+  "missing_info": [
+    "판정에 필요하지만 사업보고서에서 찾을 수 없는 정보"
+  ],
+  "recommendations": [
+    "신청 전 권장사항"
+  ]
+}
 
-    규칙:
-    - 모든 자격요건을 빠짐없이 판정한다
-    - 판정 근거는 반드시 공고문 원문을 인용하고, 어떤 부분을 보고 판단했는지 명확히 한다
-    - 재무제표 정보가 있으면 반드시 활용하여 판단한다
-    - 애매한 경우 '확인 필요'로 판정하고, 무엇을 확인해야 하는지 구체적으로 안내한다
-    - 반드시 유효한 JSON만 출력한다 (코드 블록 없이)
-    """.strip()
+규칙:
+- 모든 자격요건을 빠짐없이 판정한다
+- 법령 조항이 제공된 경우 반드시 활용하여 판단한다
+- 판정 근거는 반드시 법령 조항 및 공고문 원문을 인용한다
+- 재무제표 정보가 있으면 반드시 활용하여 판단한다
+- 애매한 경우 '확인 필요'로 판정하고, 무엇을 확인해야 하는지 구체적으로 안내한다
+- 반드시 유효한 JSON만 출력한다 (코드 블록 없이)
+""".strip()
 
 # =========================================================
 # 시스템 프롬프트 - 심층 분석
 # =========================================================
 SYSTEM_INSTRUCTION_ANALYSIS = """
-    당신은 대한민국 최고의 국가 R&D 제안 전략 컨설턴트입니다.
-    반드시 한국어로 답하고, JSON 형식으로 출력합니다.
+당신은 대한민국 최고의 국가 R&D 제안 전략 컨설턴트입니다.
+반드시 한국어로 답하고, JSON 형식으로 출력합니다.
 
-    제공된 공고문과 RFP 양식을 정밀 분석하여 '수주 전략 리포트'를 작성하세요.
+제공된 공고문과 RFP 양식을 정밀 분석하여 '실무 기반 전략 리포트'를 작성하세요.
 
-    출력 형식 (JSON):
+분석 근거:
+- 「국가연구개발혁신법」 제11조: 평가 기준 명시
+- 과기정통부 「국가연구개발사업 운영·관리 지침」
+- 한국산업기술진흥원(KIAT) 「R&D 제안서 작성 실무 가이드」(2023)
+- 중소벤처기업부 「기술개발사업 신청 길라잡이」(2024)
+- 학술 연구: 「국가 R&D 과제 선정 평가요인 분석」(한국기술혁신학회지, 2022)
+
+실무 연구 결과:
+- 성공적인 제안서의 공통점: 공고문의 '사업 목적'과 제안 내용의 정렬도 높음
+- 평가위원 인터뷰: "공고문에 명시된 정량 목표 달성 가능성을 가장 중시"
+- 배점 30점 이상 평가항목 = 핵심 차별화 포인트
+
+출력 형식 (JSON):
+{
+  "title": "공고문 실무 분석 리포트",
+  "research_intent": {
+    "policy_background": "정부가 이 사업을 추진하는 정책적 배경과 의도를 3-4문장으로 설명",
+    "target_issues": [
+      "해결하고자 하는 핵심 이슈 1",
+      "해결하고자 하는 핵심 이슈 2"
+    ]
+  },
+  "evaluation_weight_analysis": {
+    "summary": "평가표 배점 구조 분석 요약",
+    "high_weight_items": [
+      {
+        "item": "평가항목명",
+        "points": 30,
+        "strategy": "이 항목에서 만점을 받기 위한 핵심 전략"
+      }
+    ]
+  },
+  "mandatory_vs_optional": {
+    "mandatory": [
+      "필수 요건 1",
+      "필수 요건 2"
+    ],
+    "optional_bonus": [
+      "가점 요건 1",
+      "가점 요건 2"
+    ]
+  },
+  "critical_focus_areas": [
     {
-      "title": "공고문 심층 분석 리포트",
-      "background": {
-        "summary": "사업이 추진되는 근본적인 배경과 정부가 해결하고자 하는 사회적/기술적 이슈를 3-4문장으로 요약",
-        "key_issues": [
-          "핵심 이슈 1",
-          "핵심 이슈 2",
-          "핵심 이슈 3"
-        ]
-      },
-      "evaluation_criteria": [
-        {
-          "title": "평가항목명",
-          "points": 30,
-          "description": "이 항목에서 평가하는 핵심 내용",
-          "perfect_score_strategy": [
-            "전략 1: 구체적인 작성 방법",
-            "전략 2: 강조해야 할 포인트",
-            "전략 3: 차별화 요소"
-          ],
-          "cautions": "이 항목에서 흔히 실수하는 부분이나 주의할 점"
-        }
-      ],
-      "competitiveness_strategies": [
-        {
-          "title": "전략명",
-          "description": "기술적 우위, 사업화 가능성, 인력/인프라 강점 등을 구체적으로 설명",
-          "action_plans": [
-            "세부 실행 1",
-            "세부 실행 2"
-          ]
-        }
-      ],
-      "proposal_checklist": [
-        "사업 배경/목적이 공고문의 정책 방향과 일치하는가?",
-        "핵심 평가항목별 배점 전략이 수립되었는가?",
-        "차별화된 기술적 우위가 명확히 드러나는가?",
-        "사업화 계획이 구체적이고 실현 가능한가?",
-        "연구진 구성이 과제 수행에 최적화되어 있는가?"
+      "area": "중점 분석 영역 (예: 기술 완성도, 사업화 계획)",
+      "why_important": "왜 이 영역이 중요한지",
+      "action_items": [
+        "구체적으로 해야 할 일 1",
+        "구체적으로 해야 할 일 2"
       ]
     }
+  ],
+  "quantitative_targets": {
+    "research_goals": [
+      "연구개발 목표 1: 정량 지표 포함",
+      "연구개발 목표 2: 정량 지표 포함"
+    ],
+    "performance_indicators": [
+      "성능지표 1 (예: TRL 7단계 달성)",
+      "성능지표 2 (예: 처리속도 50% 향상)"
+    ],
+    "deliverables": [
+      "최종 성과물 1 (예: 시제품 1대)",
+      "최종 성과물 2 (예: SCI 논문 2편, 특허 3건)"
+    ],
+    "commercialization": [
+      "사업화 요구사항 1 (예: 3년 내 매출 10억 달성)",
+      "사업화 요구사항 2 (예: 시장 점유율 5% 확보)"
+    ],
+    "mandatory_requirements": [
+      "필수 참여 요건 1 (예: 중소기업 또는 벤처기업)",
+      "필수 참여 요건 2 (예: 박사급 연구원 1명 이상)"
+    ]
+  }
+}
 
-    규칙:
-    - 구체적이고 실행 가능한 전략을 제시한다
-    - 공고문과 RFP 양식의 원문을 근거로 분석한다
-    - 반드시 유효한 JSON만 출력한다 (코드 블록 없이)
-    - 불필요한 일반론은 배제하고 실질적인 조언을 제공한다
-    """.strip()
+규칙:
+- 공고문에 명시된 정량 목표를 빠짐없이 추출한다
+- 배점이 높은 평가항목을 우선 분석한다
+- 필수 요건과 가점 요건을 명확히 구분한다
+- 구체적이고 실행 가능한 전략을 제시한다
+- 반드시 유효한 JSON만 출력한다 (코드 블록 없이)
+""".strip()
 
 # =========================================================
 # 프롬프트 생성 - 자격요건 자동 판정
@@ -206,13 +414,25 @@ SYSTEM_INSTRUCTION_ANALYSIS = """
 def eligibility_prompt(
     announcement_chunks: list[dict],
     business_report_sections: list[dict],
+    law_articles: list[dict],
     source: str | None = None
 ) -> str:
     """자격요건 자동 판정용 프롬프트 생성"""
     header = f"**공고 출처**: {source}\n\n" if source else ""
 
+    # 법령 조항 텍스트 생성
+    law_text = ""
+    if law_articles:
+        law_text = "## 관련 법령 조항\n\n"
+        for article in law_articles:
+            law_text += f"### {article['law_name']} ({article['law_type']})\n"
+            law_text += f"- 규정: {article['regulation_type']} {article['regulation_number']}\n"
+            law_text += f"- 조항: {article['full_reference']} {article['article_title']}\n"
+            law_text += f"- 유사도: {article['score']}%\n\n"
+            law_text += f"```\n{article['content'][:500]}\n```\n\n"
+        law_text += "---\n\n"
+
     # 사업보고서 섹션을 텍스트로 변환
-    # 재무제표/감사의견 등 중요 정보를 위해 전체 섹션 포함
     business_report_text = "## 사업보고서 정보\n\n"
     
     # 중요 키워드가 있는 섹션 우선 포함
@@ -236,11 +456,10 @@ def eligibility_prompt(
         
         # 내용이 리스트면 합치기
         if isinstance(content, list):
-            # 우선순위 섹션은 전체, 일반 섹션은 앞부분만
             if is_priority:
-                text_content = "\n".join(content)  # 전체
+                text_content = "\n".join(content)
             else:
-                text_content = "\n".join(content[:30])  # 30줄
+                text_content = "\n".join(content[:30])
         else:
             text_content = str(content)[:2000] if is_priority else str(content)[:500]
         
@@ -253,7 +472,7 @@ def eligibility_prompt(
     
     # 우선순위 섹션 먼저, 그 다음 일반 섹션
     business_report_text += "".join(priority_sections)
-    business_report_text += "".join(other_sections[:30])  # 일반 섹션은 30개까지
+    business_report_text += "".join(other_sections[:30])
 
     # 공고문 청크
     announcement_body = "\n\n".join(
@@ -262,23 +481,25 @@ def eligibility_prompt(
     )
 
     return f"""
-    {header}
-    {business_report_text}
+{header}
+{law_text}
+{business_report_text}
 
-    아래 공고문의 모든 자격요건을 추출하고, 위에 제공된 사업보고서 정보와 비교하여
-    각 요건에 대해 '가능'/'불가능'/'확인 필요'를 자동 판정하라.
+아래 공고문의 모든 자격요건을 추출하고, 위에 제공된 법령 조항과 사업보고서 정보를 종합하여
+각 요건에 대해 '가능'/'불가능'/'확인 필요'를 자동 판정하라.
 
-    판정 시 반드시 다음을 포함하라:
-    1. 판정 근거가 된 공고문의 원문을 그대로 인용
-    2. 해당 요건을 어떻게 해석했고, 사업보고서의 어느 부분과 비교했는지 상세 설명
-    3. 불가능하다면 구체적으로 어떤 부분이 불충족인지 명확히 제시
-    4. 확인이 필요하다면 무엇을 어떻게 확인해야 하는지 안내
+판정 시 반드시 다음을 포함하라:
+1. 법령 조항이 제공된 경우 우선 참고하여 판정
+2. 판정 근거가 된 법령 조항 및 공고문의 원문을 그대로 인용
+3. 해당 요건을 어떻게 해석했고, 법령 및 사업보고서의 어느 부분과 비교했는지 상세 설명
+4. 불가능하다면 구체적으로 어떤 부분이 불충족인지 명확히 제시
+5. 확인이 필요하다면 무엇을 어떻게 확인해야 하는지 안내
 
-    ## 공고문 내용
-    {announcement_body}
-    
-    주의: JSON 응답만 출력하고, ```json 같은 코드 블록은 사용하지 마라.
-    """.strip()
+## 공고문 내용
+{announcement_body}
+
+주의: JSON 응답만 출력하고, ```json 같은 코드 블록은 사용하지 마라.
+""".strip()
 
 # =========================================================
 # 프롬프트 생성 - 심층 분석
@@ -304,22 +525,27 @@ def analysis_prompt(
         )
 
     return f"""
-    {header}
+{header}
 
-    아래 공고문과 RFP 양식을 정밀 분석하여 수주 전략 리포트를 JSON 형식으로 작성하라.
+아래 공고문과 RFP 양식을 정밀 분석하여 실무 기반 전략 리포트를 JSON 형식으로 작성하라.
 
-    분석 요구사항:
-    1. 사업 배경과 정부가 해결하고자 하는 핵심 이슈 파악
-    2. 배점이 높거나 까다로운 핵심 평가항목 선정 및 만점 전략 수립
-    3. 경쟁사 대비 차별화할 수 있는 필승 전략 3가지 제시
+분석 요구사항:
+1. 사업의 정책적 배경 및 정부가 해결하고자 하는 핵심 이슈 파악
+2. 평가표 배점 분석: 30점 이상 고배점 항목을 핵심 차별화 포인트로 선정
+3. 필수 요건과 가점 요건을 명확히 구분
+4. 공고문에 명시된 모든 정량 목표를 빠짐없이 추출
+   - 연구개발 목표 및 성능지표
+   - 최종 성과물 형태 (시제품, 논문, 특허 등)
+   - 사업화 요구사항 (매출 목표, 시장 진출 계획)
+   - 필수 참여 요건 (기업 형태, 연구진 구성)
 
-    ## 공고문 내용
-    {announcement_body}
-    
-    {rfp_body}
-    
-    주의: JSON 응답만 출력하고, ```json 같은 코드 블록은 사용하지 마라.
-    """.strip()
+## 공고문 내용
+{announcement_body}
+
+{rfp_body}
+
+주의: JSON 응답만 출력하고, ```json 같은 코드 블록은 사용하지 마라.
+""".strip()
 
 # =========================================================
 # Gemini 호출 - 자격요건 자동 판정
@@ -357,12 +583,36 @@ def eligibility_judgment(
     # DB에서 사업보고서 섹션 JSON 조회
     print(f"DB에서 사업보고서 조회 중... (company_id: {company_id})")
     business_report_sections = load_business_report_from_db(company_id)
-    
-    print(f"✓ DB 조회 완료")
-    print(f"  - 섹션 수: {len(business_report_sections)}개")
+    print(f"✓ 사업보고서 로드 완료 (섹션 수: {len(business_report_sections)}개)")
 
+    # ChromaDB에서 관련 법령 조항 검색
+    print("관련 법령 조항 검색 중...")
+    
+    # 모든 공고문 청크를 합쳐서 법령 검색
+    full_announcement_text = "\n".join([chunk['text'] for chunk in announcement_chunks])
+    
+    # 법령명 추출
+    law_names = extract_law_names(full_announcement_text)
+    print(f"✓ 추출된 법령명: {law_names}")
+    
+    # 법령 조항 검색
+    law_articles = []
+    if law_names:
+        for law_name in law_names[:5]:  # 최대 5개 법령
+            results = search_law_regulations(law_name, top_k=2, score_threshold=0.6)
+            law_articles.extend(results)
+        print(f"✓ 검색된 법령 조항: {len(law_articles)}개")
+    else:
+        print("  법령명을 찾을 수 없어 법령 검색을 건너뜁니다.")
+
+    # 프롬프트 생성
     client = genai.Client(api_key=api_key)
-    prompt = eligibility_prompt(announcement_chunks, business_report_sections, source)
+    prompt = eligibility_prompt(
+        announcement_chunks,
+        business_report_sections,
+        law_articles,
+        source
+    )
 
     print("\n자격요건 자동 판정 중...")
     response = client.models.generate_content(
