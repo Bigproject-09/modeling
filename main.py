@@ -95,15 +95,6 @@ def add_documents(
 # 파일 파싱 (DB 저장은 Spring에서)
 @app.post("/parse")
 async def parse_notice(file: UploadFile = File(...)):
-    """
-    파일 파싱만 수행 (DB 저장은 Spring Boot에서 처리)
-    
-    Flow:
-    1. Spring Boot: NoticeFile 생성 + NoticeAttachment 생성 (WAIT 상태)
-    2. Spring Boot → FastAPI: 파일 전송
-    3. FastAPI: 파싱 수행 후 결과 JSON 반환 ← 이 함수
-    4. Spring Boot: NoticeAttachment.markDone(parsedJson) 호출
-    """
     print(f"🔥 PARSE CALLED: {file.filename}")
 
     os.makedirs("tmp", exist_ok=True)
@@ -111,39 +102,21 @@ async def parse_notice(file: UploadFile = File(...)):
     tmp_path = os.path.join("tmp", f"{uuid.uuid4().hex}{ext}")
 
     try:
-        # 파일 임시 저장
-        # 1️⃣ 파일 임시 저장
         content = await file.read()
         with open(tmp_path, "wb") as f:
             f.write(content)
 
-        # 파싱
-        if ext == ".pdf":
-            result = {
-                "file_type": "pdf",
-                "pages": extract_text_from_pdf(tmp_path)
-            }
-        elif ext == ".docx":
-            result = {
-                "file_type": "docx",
-                "content": parse_docx_to_blocks(tmp_path, "tmp")
-            }
-        else:
+        # 지원하는 확장자 체크
+        if ext not in [".pdf", ".docx"]:
             return JSONResponse(
                 status_code=400,
                 content={"error": f"Unsupported extension: {ext}"}
             )
 
-        print(f"✅ PARSE SUCCESS: {file.filename}")
-
-        return JSONResponse(
-            content=result,
-        # 2️⃣ 파싱
+        # ✅ 파일을 JSON으로 파싱 (step 공통 사용 가능)
         parsed = parse_file_to_json(tmp_path)
-
         print(f"✅ PARSE SUCCESS: {file.filename}")
 
-        # 3️⃣ 파싱 결과만 반환 (DB 저장은 Spring에서)
         return JSONResponse(
             content=parsed,
             status_code=200
@@ -151,16 +124,15 @@ async def parse_notice(file: UploadFile = File(...)):
 
     except Exception as e:
         print(f"❌ PARSE FAILED: {file.filename} - {str(e)}")
-        
         return JSONResponse(
             status_code=500,
             content={"error": str(e)}
         )
 
     finally:
-        # 임시 파일 삭제
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
+
 
 
 # 헬스체크
