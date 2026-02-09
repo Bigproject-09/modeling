@@ -1,31 +1,36 @@
-# main.py (통합 버전)
+# main.py
 import os
 import uuid
+import json
 import requests
 import chromadb
-from fastapi import FastAPI, UploadFile, File, Form
+from typing import Any, Dict, Optional, List
+
+from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware 
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+from pydantic import BaseModel
+
 load_dotenv()
-from document_api import ingest_to_db, API_KEY
-from parsing import parse_file_to_json
 
-
+# utils.document_parsing 기반 파싱만 사용
 from utils.document_parsing import parse_docx_to_blocks, extract_text_from_pdf
+
+# Step1/2/4에서 쓰는 기존 모듈들
+from features.rfp_analysis_checklist.main_notice import run_notice_step1
+from features.rnd_search.main_search import main as run_search
+from features.ppt_script.main_script import main as run_script_gen
 
 app = FastAPI()
 
 # ============================================
-# ChromaDB 클라이언트 초기화 (팀원 추가 부분)
+# ChromaDB (그대로 유지)
 # ============================================
-CHROMA_HOST = os.getenv('CHROMA_HOST', 'localhost')
-CHROMA_PORT = int(os.getenv('CHROMA_PORT', 8001))
+CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")
+CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8001"))
 
-chroma_client = chromadb.HttpClient(
-    host=CHROMA_HOST,
-    port=CHROMA_PORT
-)
+chroma_client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,21 +40,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ============================================
-# ChromaDB 관련 엔드포인트 (팀원 추가 부분)
-# ============================================
 @app.post("/api/chroma/collection/create")
 def create_collection(name: str):
-    """ChromaDB 컬렉션 생성"""
     try:
-        collection = chroma_client.create_collection(name=name)
+        chroma_client.create_collection(name=name)
         return {"status": "success", "collection": name}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 @app.get("/api/chroma/collections")
 def list_collections():
-    """ChromaDB 컬렉션 목록 조회"""
     try:
         collections = chroma_client.list_collections()
         return {"collections": [col.name for col in collections]}
@@ -58,300 +58,286 @@ def list_collections():
 
 @app.post("/api/chroma/search")
 def search_documents(collection_name: str, query: str, n_results: int = 5):
-    """ChromaDB에서 유사 문서 검색"""
     try:
         collection = chroma_client.get_collection(name=collection_name)
-        results = collection.query(
-            query_texts=[query],
-            n_results=n_results
-        )
+        results = collection.query(query_texts=[query], n_results=n_results)
         return {"status": "success", "results": results}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 @app.post("/api/chroma/add")
-def add_documents(
-    collection_name: str,
-    documents: list[str],
-    metadatas: list[dict] = None,
-    ids: list[str] = None
-):
-    """ChromaDB에 문서 추가"""
+def add_documents(collection_name: str, documents: List[str], metadatas: List[dict] = None, ids: List[str] = None):
     try:
         collection = chroma_client.get_collection(name=collection_name)
-        collection.add(
-            documents=documents,
-            metadatas=metadatas,
-            ids=ids
-        )
+        collection.add(documents=documents, metadatas=metadatas, ids=ids)
         return {"status": "success", "added": len(documents)}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# ============================================
-# 기존 기능들
-# ============================================
+# bytes 해결용
+from fastapi import Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+import json
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    # bytes가 섞여있어도 절대 터지지 않게 "문자열로" 고정
+    return JSONResponse(
+        status_code=422,
+        content={
+            "status": "error",
+            "message": "Request validation failed",
+            "errors": exc.errors(),  # 여기엔 bytes가 안 들어가야 정상인데, 들어가도 아래에서 안전 처리
+            "body_preview": (await request.body())[:200].hex()  # 바디 일부를 hex로 보여줌
+        },
+    )
 
-# 파일 파싱 (DB 저장은 Spring에서)
+# ============================================
+# /parse (충돌 제거: utils.document_parsing만 사용)
+# ============================================
 @app.post("/parse")
 async def parse_notice(file: UploadFile = File(...)):
     """
     파일 파싱만 수행 (DB 저장은 Spring Boot에서 처리)
-    
-    Flow:
-    1. Spring Boot: NoticeFile 생성 + NoticeAttachment 생성 (WAIT 상태)
-    2. Spring Boot → FastAPI: 파일 전송
-    3. FastAPI: 파싱 수행 후 결과 JSON 반환 ← 이 함수
-    4. Spring Boot: NoticeAttachment.markDone(parsedJson) 호출
+    - pdf: extract_text_from_pdf
+    - docx: parse_docx_to_blocks
     """
-    print(f"🔥 PARSE CALLED: {file.filename}")
-
     os.makedirs("tmp", exist_ok=True)
     ext = os.path.splitext(file.filename)[1].lower()
     tmp_path = os.path.join("tmp", f"{uuid.uuid4().hex}{ext}")
 
     try:
-        # 파일 임시 저장
-        # 1️⃣ 파일 임시 저장
         content = await file.read()
         with open(tmp_path, "wb") as f:
             f.write(content)
 
-        # 파싱
         if ext == ".pdf":
-            result = {
-                "file_type": "pdf",
-                "pages": extract_text_from_pdf(tmp_path)
-            }
+            parsed = {"file_type": "pdf", "pages": extract_text_from_pdf(tmp_path)}
         elif ext == ".docx":
-            result = {
-                "file_type": "docx",
-                "content": parse_docx_to_blocks(tmp_path, "tmp")
-            }
+            parsed = {"file_type": "docx", "content": parse_docx_to_blocks(tmp_path, "tmp")}
         else:
-            return JSONResponse(
-                status_code=400,
-                content={"error": f"Unsupported extension: {ext}"}
-            )
+            return JSONResponse(status_code=400, content={"error": f"Unsupported extension: {ext}"})
 
-        print(f"✅ PARSE SUCCESS: {file.filename}")
-
-        return JSONResponse(
-            content=result,
-        # 2️⃣ 파싱
-        parsed = parse_file_to_json(tmp_path)
-
-        print(f"✅ PARSE SUCCESS: {file.filename}")
-
-        # 3️⃣ 파싱 결과만 반환 (DB 저장은 Spring에서)
-        return JSONResponse(
-            content=parsed,
-            status_code=200
-        )
+        return JSONResponse(status_code=200, content=parsed)
 
     except Exception as e:
-        print(f"❌ PARSE FAILED: {file.filename} - {str(e)}")
-        
-        return JSONResponse(
-            status_code=500,
-            content={"error": str(e)}
-        )
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
     finally:
-        # 임시 파일 삭제
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-
-# 헬스체크
 @app.get("/health")
 def health_check():
     return {"status": "ok", "message": "FastAPI is running"}
 
-
-# 파싱 지원 형식 조회
 @app.get("/parse/formats")
 def supported_formats():
-    """지원하는 파일 형식 조회"""
-    return {
-        "supported_formats": [".pdf", ".docx"],
-        "max_file_size_mb": 50
-    }
+    return {"supported_formats": [".pdf", ".docx"], "max_file_size_mb": 50}
 
-
-
-from pydantic import BaseModel
-
+# ============================================
+# Step1 (JSON 그대로)
+# ============================================
 class Step1Request(BaseModel):
     notice_id: int
     company_id: int = 1
 
 @app.post("/api/analyze/step1")
 def api_run_step1(req: Step1Request):
-    from features.rfp_analysis_checklist.main_notice import run_notice_step1
-    print("RAW REQ:", req.model_dump())
-    print(f"[Step 1] 분석 요청: notice_id={req.notice_id}, company_id={req.company_id}")
     result = run_notice_step1(notice_id=req.notice_id, company_id=req.company_id)
     return {"status": "success", "data": result}
 
-    
 # ============================================
-# RFP 검색 (수정된 버전)
+# ✅ JSON Step2/Step4를 위해 Spring Boot에서 공고 파일/PPT 경로를 가져오는 헬퍼
 # ============================================
-from pydantic import BaseModel
-from features.rnd_search.main_search import main as run_search
-from features.ppt_script.main_script import main as run_script_gen
+SPRING_BASE_URL = os.getenv("SPRING_BASE_URL", "http://localhost:8080")
+
+def _auth_headers(token: Optional[str]) -> Dict[str, str]:
+    if not token:
+        return {}
+    return {"Authorization": token if token.startswith("Bearer ") else f"Bearer {token}"}
+
+def _spring_get_notice_detail(notice_id: int, token: Optional[str] = None) -> Dict[str, Any]:
+    url = f"{SPRING_BASE_URL}/api/notices/{notice_id}"
+    r = requests.get(url, headers=_auth_headers(token), timeout=20)
+    r.raise_for_status()
+    return r.json()
+
+def _spring_download_notice_file(notice_id: int, file_id: int, token: Optional[str] = None) -> str:
+    """
+    Spring에서 파일을 내려받아 FastAPI tmp에 저장 후 경로 리턴
+    """
+    url = f"{SPRING_BASE_URL}/api/notices/{notice_id}/files/{file_id}/download"
+    r = requests.get(url, headers=_auth_headers(token), timeout=60)
+    r.raise_for_status()
+
+    cd = r.headers.get("content-disposition", "")
+    filename = f"notice_{notice_id}_{file_id}"
+    if "filename=" in cd:
+        filename = cd.split("filename=")[-1].strip().strip('"')
+
+    os.makedirs("tmp", exist_ok=True)
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in [".pdf", ".docx"]:
+        ext = ext or ".bin"
+
+    tmp_path = os.path.join("tmp", f"{uuid.uuid4().hex}{ext}")
+    with open(tmp_path, "wb") as f:
+        f.write(r.content)
+
+    return tmp_path
+
+def _build_text_from_file(path: str) -> str:
+    ext = os.path.splitext(path)[1].lower()
+
+    if ext == ".pdf":
+        pages = extract_text_from_pdf(path)
+        return "\n".join(json.dumps(p, ensure_ascii=False) for p in pages) if isinstance(pages, list) else str(pages)
+
+    if ext == ".docx":
+        blocks = parse_docx_to_blocks(path, "tmp")
+        return json.dumps(blocks, ensure_ascii=False)
+
+    return ""
+
+def _pick_first_supported_notice_file_id(notice_detail: Dict[str, Any]) -> Optional[int]:
+    for key in ["files", "noticeFiles", "notice_files"]:
+        arr = notice_detail.get(key)
+        if isinstance(arr, list) and arr:
+            for it in arr:
+                if isinstance(it, dict):
+                    for id_key in ["fileId", "id", "noticeFileId", "file_id"]:
+                        v = it.get(id_key)
+                        if isinstance(v, int):
+                            return v
+                        if isinstance(v, str) and v.isdigit():
+                            return int(v)
+    return None
+
+# ============================================
+# ✅ Step2 JSON 버전
+# body: {"notice_id": 1, "token": "Bearer ..."(옵션)}
+# ============================================
+class Step2Request(BaseModel):
+    notice_id: int
+    notice_text: Optional[str] = None
+    ministry_name: Optional[str] = None
+    token: Optional[str] = None  # 필요하면 유지
 
 @app.post("/api/analyze/step2")
-async def api_run_step2(
-    file: UploadFile = File(...),
-    notice_id: int = Form(None)
-):
-    print(f"[Step 2] 유관 RFP 검색 요청")
-    print(f"  - 파일: {file.filename}")
-    print(f"  - notice_id: {notice_id}")
-    
-    os.makedirs("tmp", exist_ok=True)
-    ext = os.path.splitext(file.filename)[1].lower()
-    tmp_path = os.path.join("tmp", f"{uuid.uuid4().hex}{ext}")
-    
+def api_run_step2_json(req: Step2Request):
     try:
-        # 1. 파일 저장
-        content = await file.read()
-        with open(tmp_path, "wb") as f:
-            f.write(content)
-        
-        # 2. 파일 파싱
-        parsed_text = ""
-        
-        if ext == ".pdf":
-            pages = extract_text_from_pdf(tmp_path)
-            # ✅ 수정: pages가 리스트면 문자열로 변환
-            if isinstance(pages, list):
-                parsed_text = "\n".join(str(p) for p in pages)
-            else:
-                parsed_text = str(pages)
-            print(f"  ✅ PDF 파싱 완료: {len(parsed_text)} 글자")
-            
-        elif ext == ".docx":
-            blocks = parse_docx_to_blocks(tmp_path, "tmp")
-            # ✅ 수정: blocks가 dict나 list면 적절히 처리
-            if isinstance(blocks, list):
-                # 리스트의 각 항목을 문자열로 변환
-                parsed_text = "\n".join(
-                    str(b.get('text', '') if isinstance(b, dict) else b) 
-                    for b in blocks
+        # ✅ 1) Spring이 준 notice_text 우선
+        notice_text = (req.notice_text or "").strip()
+        ministry_name = (req.ministry_name or "").strip()
+
+        # ✅ 2) 없으면(백업) 기존 로직으로 Spring에서 파일 받아서 구성(원하면 유지)
+        if not notice_text:
+            detail = _spring_get_notice_detail(req.notice_id, req.token)
+            file_id = _pick_first_supported_notice_file_id(detail)
+            if file_id is None:
+                return JSONResponse(
+                    status_code=400,
+                    content={"status": "error", "message": "공고 파일(fileId)을 찾지 못했습니다. notice detail 응답에 files 목록이 있는지 확인하세요."}
                 )
-            elif isinstance(blocks, dict):
-                # dict면 'content' 키를 찾아서 사용
-                parsed_text = str(blocks.get('content', str(blocks)))
-            else:
-                parsed_text = str(blocks)
-            print(f"  ✅ DOCX 파싱 완료: {len(parsed_text)} 글자")
-            
-        else:
+
+            tmp_path = _spring_download_notice_file(req.notice_id, file_id, req.token)
+            try:
+                notice_text = _build_text_from_file(tmp_path).strip()
+            finally:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+
+        if not notice_text:
             return JSONResponse(
                 status_code=400,
-                content={"status": "error", "message": f"지원하지 않는 파일 형식: {ext}"}
+                content={"status": "error", "message": "notice_text가 비어있습니다. 업로드 파싱/텍스트 변환을 확인하세요."}
             )
-        
-        # 3. 검색 실행
-        result = run_search(
-            notice_id=notice_id,
-            notice_text=parsed_text
-        )
-        
-        print(f"  ✅ 검색 완료")
-        
-        return JSONResponse(
-            content={"status": "success", "data": result},
-            status_code=200
-        )
-    
+
+        # ✅ run_search가 ministry_name을 받는 구조면 같이 넘기고,
+        #    아니라면 run_search 내부에서 Step2 report 만들 때 사용하도록 수정해야 함.
+        #    일단 notice_text 기반 검색이 핵심이라 최소 인자만 유지.
+        result = run_search(notice_id=req.notice_id, notice_text=notice_text, ministry_name=ministry_name)
+        return {"status": "success", "data": result}
+
     except Exception as e:
-        import traceback
-        print(f"  ❌ 오류: {str(e)}")
-        print(traceback.format_exc())  # ← 전체 에러 스택 출력
-        return JSONResponse(
-            status_code=500,
-            content={"status": "error", "message": str(e)}
-        )
-    
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+# ============================================
+# Step3 (PPT 생성)
+# ============================================
+class Step3Request(BaseModel):
+    notice_id: int
 
+@app.post("/api/analyze/step3")
+def api_run_step3(req: Step3Request):
+    from features.ppt_maker.main_ppt import main as run_ppt
+    result = run_ppt(notice_id=req.notice_id)
+    return {"status": "success", "data": result}
 
 # ============================================
-# PPT 스크립트 생성
+# ✅ Step4 JSON 버전 (생성만, 저장 없음)
+# body: {"notice_id": 1, "token": "Bearer ..."(옵션: notice detail 조회가 인증 필요할 때만)}
 # ============================================
+class Step4Request(BaseModel):
+    notice_id: int
+    token: Optional[str] = None
+
+def _find_ppt_path_from_notice_detail(detail: Dict[str, Any]) -> Optional[str]:
+    for k in ["pptPath", "ppt_path", "generatedPptPath"]:
+        v = detail.get(k)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+
+    for key in ["references", "noticeReferences", "notice_references"]:
+        arr = detail.get(key)
+        if isinstance(arr, list):
+            for it in arr:
+                if not isinstance(it, dict):
+                    continue
+                title = str(it.get("title", "")).strip()
+                url = str(it.get("url", "")).strip()
+                typ = str(it.get("type", "")).strip().upper()
+                if url and (title.lower() == "generated ppt" or typ == "FILE"):
+                    return url
+    return None
+
 @app.post("/api/analyze/step4")
-async def api_run_step4(
-    file: UploadFile = File(...),
-    notice_id: int = None,
-    token: str = None
-):
-    """
-    Step 4: PPT 스크립트 생성 및 DB 저장
-    """
-    print(f"[Step 4] 스크립트 생성 요청: {file.filename}, notice_id={notice_id}")
-    
-    os.makedirs("tmp", exist_ok=True)
-    tmp_path = os.path.join("tmp", f"{uuid.uuid4().hex}.pptx")
-    
+def api_run_step4_json(req: Step4Request):
     try:
-        content = await file.read()
-        with open(tmp_path, "wb") as f:
-            f.write(content)
-        
-        result = run_script_gen(pptx_path=tmp_path)
-        
-        if result:
-            # Spring Boot로 저장 요청
-            if notice_id and token:
-                try:
-                    spring_url = "http://localhost:8080/api/scripts/save"
-                    headers = {"Authorization": f"Bearer {token}"}
-                    payload = {
-                        "noticeId": notice_id,
-                        "slides": result.get("slides", []),
-                        "qna": result.get("qna", [])
-                    }
-                    
-                    spring_response = requests.post(
-                        spring_url,
-                        json=payload,
-                        headers=headers,
-                        timeout=10
-                    )
-                    
-                    if spring_response.status_code == 200:
-                        print("[Step 4] DB 저장 성공")
-                    else:
-                        print(f"[Step 4] DB 저장 실패: {spring_response.status_code}")
-                except Exception as e:
-                    print(f"[Step 4] Spring Boot 연동 오류: {str(e)}")
-            
+        detail = _spring_get_notice_detail(req.notice_id, req.token)
+        ppt_path = _find_ppt_path_from_notice_detail(detail)
+
+        if not ppt_path:
             return JSONResponse(
-                content={"status": "success", "data": result},
-                status_code=200
+                status_code=400,
+                content={"status": "error", "message": "PPT 경로(ppt_path)를 찾지 못했습니다. Step3 결과가 references(FILE)에 저장되어 있는지 확인하세요."}
             )
-        else:
-            return JSONResponse(
-                status_code=500,
-                content={"status": "error", "message": "스크립트 생성 실패"}
-            )
-    
+
+        local_ppt_path = ppt_path
+        tmp_path = None
+
+        # URL이면 다운로드
+        if ppt_path.startswith("http://") or ppt_path.startswith("https://"):
+            os.makedirs("tmp", exist_ok=True)
+            tmp_path = os.path.join("tmp", f"{uuid.uuid4().hex}.pptx")
+            r = requests.get(ppt_path, timeout=60)
+            r.raise_for_status()
+            with open(tmp_path, "wb") as f:
+                f.write(r.content)
+            local_ppt_path = tmp_path
+
+        try:
+            result = run_script_gen(pptx_path=local_ppt_path)
+            # ✅ 저장은 여기서 하지 않음 (Spring/프론트에서 /api/scripts/save)
+            return {"status": "success", "data": result, "meta": {"saved": False}}
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
+    except requests.HTTPError as e:
+        return JSONResponse(status_code=502, content={"status": "error", "message": f"Spring/URL 호출 실패: {str(e)}"})
     except Exception as e:
-        print(f"[Step 4] 오류: {str(e)}")
-        return JSONResponse(
-            status_code=500,
-            content={"status": "error", "message": str(e)}
-        )
-    
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 if __name__ == "__main__":
     import uvicorn
