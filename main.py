@@ -262,17 +262,125 @@ def api_run_step2_json(req: Step2Request):
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
-# ============================================
-# Step3 (PPT 생성)
-# ============================================
-class Step3Request(BaseModel):
-    notice_id: int
+# # ============================================
+# # Step3 (PPT 생성)
+# # ============================================
+# class Step3Request(BaseModel):
+#     notice_id: int
 
+# @app.post("/api/analyze/step3")
+# def api_run_step3(req: Step3Request):
+#     from features.ppt_maker.main_ppt import main as run_ppt
+#     result = run_ppt(notice_id=req.notice_id)
+#     return {"status": "success", "data": result}
+
+# ============================================
+# Step 3: PPT 생성 (전체 워크플로우)
+# ============================================
 @app.post("/api/analyze/step3")
-def api_run_step3(req: Step3Request):
-    from features.ppt_maker.main_ppt import main as run_ppt
-    result = run_ppt(notice_id=req.notice_id)
-    return {"status": "success", "data": result}
+async def api_run_step4(
+    file: UploadFile = File(...),
+    notice_id: int = Form(None),
+    token: str = Form(None)
+):
+    """PPT 생성 전체 워크플로우"""
+    from features.ppt_maker.nodes_code.extract_text_node import extract_text
+    from features.ppt_maker.nodes_code.section_split_node import section_split_node
+    from features.ppt_maker.nodes_code.section_deck_generation_node import section_deck_generation_node
+    from features.ppt_maker.nodes_code.merge_deck_node import merge_deck_node
+    from features.ppt_maker.nodes_code.gamma_generation_node import gamma_generation_node
+    
+    print(f"[Step 3] PPT 생성 요청: {file.filename}, notice_id={notice_id}")
+    
+    os.makedirs("tmp", exist_ok=True)
+    ext = os.path.splitext(file.filename)[1].lower()
+    tmp_path = os.path.join("tmp", f"{uuid.uuid4().hex}{ext}")
+    
+    try:
+        # 파일 저장
+        content = await file.read()
+        with open(tmp_path, "wb") as f:
+            f.write(content)
+        print(f"  ✅ 파일 저장: {tmp_path}")
+        
+        # State 초기화
+        state = {
+            "source_path": tmp_path,
+            "parsing_out_dir": "tmp/parsing",
+            "gemini_model": "gemini-2.0-flash-exp",
+            "gemini_temperature": 0.4,
+            "gemini_max_output_tokens": 4096,
+            "gamma_timeout_sec": 600,
+            "output_dir": "output",
+        }
+        
+        # 1) 텍스트 추출
+        print(f"  [1/5] 텍스트 추출...")
+        extract_text(state)
+        print(f"  ✅ {len(state.get('extracted_text', ''))} 글자")
+        
+        # 2) 섹션 분할
+        print(f"  [2/5] 섹션 분할...")
+        section_split_node(state)
+        sections = state.get("sections", [])
+        print(f"  ✅ {len(sections)}개 섹션")
+        
+        # 3) 슬라이드 생성 (Gemini)
+        print(f"  [3/5] 슬라이드 생성...")
+        section_deck_generation_node(state)
+        total = sum(len(v.get("slides", [])) for v in state.get("section_decks", {}).values())
+        print(f"  ✅ {total}장")
+        
+        # 4) 병합
+        print(f"  [4/5] 병합...")
+        merge_deck_node(state)
+        merged = len(state.get("deck_json", {}).get("slides", []))
+        print(f"  ✅ {merged}장")
+        
+        # 5) PPTX 생성 (Gamma)
+        print(f"  [5/5] PPTX 생성...")
+        gamma_generation_node(state)
+        pptx_path = state.get("pptx_path")
+        print(f"  ✅ {pptx_path}")
+        
+        # 결과
+        result = {
+            "deck_title": state.get("deck_title"),
+            "total_slides": merged,
+            "pptx_path": pptx_path,
+        }
+        
+        # Spring Boot 저장 (선택)
+        if notice_id and token:
+            try:
+                spring_response = requests.post(
+                    "http://localhost:8080/api/ppt/save",
+                    json={
+                        "noticeId": notice_id,
+                        "deckTitle": result["deck_title"],
+                        "pptxPath": pptx_path,
+                    },
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=10
+                )
+                result["db_saved"] = spring_response.status_code == 200
+            except:
+                result["db_saved"] = False
+        
+        return JSONResponse({"status": "success", "data": result})
+    
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "message": str(e)}
+        )
+    
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
 
 # ============================================
 # ✅ Step4 JSON 버전 (생성만, 저장 없음)
