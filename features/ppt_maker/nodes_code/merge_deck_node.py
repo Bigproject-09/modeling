@@ -291,6 +291,3 @@ def merge_deck_node(state: GraphState) -> GraphState:
 
     print(f"[DEBUG] merge_deck_node merged slides: {len(merged)}")
     return state
-
-
-

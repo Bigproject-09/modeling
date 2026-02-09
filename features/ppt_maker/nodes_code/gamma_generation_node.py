@@ -316,6 +316,3 @@ def gamma_generation_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
     print("[DEBUG] Gamma PPTX saved:", out_path)
     return state
-
-
-

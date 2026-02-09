@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, NamedTuple
+from typing import Any, Dict, List, Tuple
 import re
 
 # 발표 순서(고정) + 섹션 헤딩 후보(규칙 기반)
