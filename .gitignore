@@ -13,3 +13,4 @@ analysis_cache.json
 debug_analysis_result.json
 *.png
 features/ppt_maker/nodes_code/test_outputs/
+output/
