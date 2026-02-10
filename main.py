@@ -192,84 +192,37 @@ def api_run_step1(req: Step1Request):
 # Step 2: RFP 검색
 # ============================================
 
+
+class Step2Request(BaseModel):
+    notice_id: int | None = None
+    notice_text: str | None = None
+    ministry_name: str | None = None
+
+
 @app.post("/api/analyze/step2")
-async def api_run_step2(
-    file: UploadFile = File(...),
-    notice_id: int = Form(None)
-):
+def api_run_step2(req: Step2Request):
+    """
+    Step 2는 Spring에서 /parse로 파일을 먼저 파싱한 뒤,
+    notice_text(+ ministry_name)를 JSON으로 넘겨받아 유관 RFP를 검색한다.
+    """
     print(f"[Step 2] 유관 RFP 검색 요청")
-    print(f"  - 파일: {file.filename}")
-    print(f"  - notice_id: {notice_id}")
-    
-    os.makedirs("tmp", exist_ok=True)
-    ext = os.path.splitext(file.filename)[1].lower()
-    tmp_path = os.path.join("tmp", f"{uuid.uuid4().hex}{ext}")
-    
+    print(f"  - notice_id: {req.notice_id}")
+    print(f"  - ministry_name: {req.ministry_name}")
+    print(f"  - notice_text: {len(req.notice_text or '')} chars")
+
     try:
-        # 1. 파일 저장
-        content = await file.read()
-        with open(tmp_path, "wb") as f:
-            f.write(content)
-        
-        # 2. 파일 파싱
-        parsed_text = ""
-        
-        if ext == ".pdf":
-            pages = extract_text_from_pdf(tmp_path)
-            # ✅ 수정: pages가 리스트면 문자열로 변환
-            if isinstance(pages, list):
-                parsed_text = "\n".join(str(p) for p in pages)
-            else:
-                parsed_text = str(pages)
-            print(f"  ✅ PDF 파싱 완료: {len(parsed_text)} 글자")
-            
-        elif ext == ".docx":
-            blocks = parse_docx_to_blocks(tmp_path, "tmp")
-            # ✅ 수정: blocks가 dict나 list면 적절히 처리
-            if isinstance(blocks, list):
-                # 리스트의 각 항목을 문자열로 변환
-                parsed_text = "\n".join(
-                    str(b.get('text', '') if isinstance(b, dict) else b) 
-                    for b in blocks
-                )
-            elif isinstance(blocks, dict):
-                # dict면 'content' 키를 찾아서 사용
-                parsed_text = str(blocks.get('content', str(blocks)))
-            else:
-                parsed_text = str(blocks)
-            print(f"  ✅ DOCX 파싱 완료: {len(parsed_text)} 글자")
-            
-        else:
-            return JSONResponse(
-                status_code=400,
-                content={"status": "error", "message": f"지원하지 않는 파일 형식: {ext}"}
-            )
-        
-        # 3. 검색 실행
         result = run_search(
-            notice_id=notice_id,
-            notice_text=parsed_text
+            notice_id=req.notice_id,
+            notice_text=req.notice_text,
+            ministry_name=req.ministry_name,
         )
-        
-        print(f"  ✅ 검색 완료")
-        
-        return JSONResponse(
-            content={"status": "success", "data": result},
-            status_code=200
-        )
-    
+        return JSONResponse(content={"status": "success", "data": result}, status_code=200)
     except Exception as e:
         import traceback
+
         print(f"  ❌ 오류: {str(e)}")
-        print(traceback.format_exc())  # ← 전체 에러 스택 출력
-        return JSONResponse(
-            status_code=500,
-            content={"status": "error", "message": str(e)}
-        )
-    
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        print(traceback.format_exc())
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 # ============================================
 # Step 3: PPT 생성 (전체 워크플로우)

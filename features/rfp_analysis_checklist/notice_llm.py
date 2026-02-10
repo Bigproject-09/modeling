@@ -22,9 +22,9 @@ load_dotenv()
 # =========================================================
 # ChromaDB 설정
 # =========================================================
-CHROMA_DB_DIR = r"G:/내 드라이브/chroma_db_law"
-COLLECTION_NAME = "law_regulations"
-EMBED_MODEL_NAME = "intfloat/multilingual-e5-base"
+CHROMA_DB_DIR = os.environ.get("LAW_CHROMA_DB_DIR", r"C:/chroma_law")
+COLLECTION_NAME = os.environ.get("LAW_COLLECTION_NAME", "law_regulations")
+EMBED_MODEL_NAME = os.environ.get("LAW_EMBED_MODEL_NAME", "intfloat/multilingual-e5-base")
 
 # 전역 캐시
 _chroma_client = None
