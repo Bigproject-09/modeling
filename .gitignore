@@ -13,3 +13,7 @@ analysis_cache.json
 debug_analysis_result.json
 *.png
 features/ppt_maker/nodes_code/test_outputs/
+
+# gamma_ppt_generator artifacts
+features/gamma_ppt_generator/out/
+features/gamma_ppt_generator/out_img/
