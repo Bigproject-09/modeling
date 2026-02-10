@@ -3,15 +3,15 @@ import os
 import uuid
 import requests
 import chromadb
-from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware 
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from features.rnd_search.main_search import main as run_search
 from features.ppt_script.main_script import main as run_script_gen
-
+from urllib.parse import quote
 
 load_dotenv()
 
@@ -35,7 +35,7 @@ chroma_client = chromadb.HttpClient(
 # ============================================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5174", "http://localhost:3000"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -162,6 +162,32 @@ async def parse_notice(file: UploadFile = File(...)):
 @app.get("/health")
 def health_check():
     return {"status": "ok", "message": "FastAPI is running"}
+
+# ============================================
+# ppt 다운로드
+# ============================================
+@app.get("/download/{filename}")
+def download_pptx(filename: str):
+    """
+    output 폴더에 저장된 pptx를 다운로드
+    예: GET /download/RanDi_xxx.pptx
+    """
+    # 경로 조작 방지: 파일명만 허용 (폴더 구분자/상위경로 차단)
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    output_dir = os.path.join(os.getcwd(), "output")
+    file_path = os.path.join(output_dir, filename)
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # 브라우저가 “저장”하도록 attachment로 내려줌
+    return FileResponse(
+        path=file_path,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        filename=filename,
+    )
 
 # ============================================
 # 파싱 지원 형식 조회
@@ -294,10 +320,14 @@ async def api_run_step4(
         print(f"  ✅ {pptx_path}")
         
         # 결과
+        pptx_filename = os.path.basename(pptx_path) if pptx_path else None
+
         result = {
             "deck_title": state.get("deck_title"),
             "total_slides": merged,
-            "pptx_path": pptx_path,
+            "pptx_path": pptx_path,          # (원하면 유지) 화면 표시용
+            "pptx_filename": pptx_filename,  # ✅ 다운로드용
+            "download_url": f"/download/{quote(pptx_filename)}" if pptx_filename else None,  # ✅ 선택
         }
         
         # Spring Boot 저장 (선택)
