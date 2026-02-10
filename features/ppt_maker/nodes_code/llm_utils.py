@@ -5,7 +5,7 @@ Gemini LLM 호출 공통 유틸.
 - 429/5xx 계열에 대해 retry + backoff
 - 429 응답에 "retry in XXs"가 있으면 그 시간만큼 대기 후 재시도
 """
-
+#llm_utils.py
 from __future__ import annotations
 
 import os

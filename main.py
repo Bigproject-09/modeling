@@ -8,6 +8,10 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware 
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from pydantic import BaseModel
+from features.rnd_search.main_search import main as run_search
+from features.ppt_script.main_script import main as run_script_gen
+
 
 load_dotenv()
 
@@ -187,13 +191,12 @@ def api_run_step1(req: Step1Request):
 # ============================================
 # Step 2: RFP 검색
 # ============================================
+
 @app.post("/api/analyze/step2")
 async def api_run_step2(
     file: UploadFile = File(...),
     notice_id: int = Form(None)
 ):
-    from features.rnd_search.main_search import main as run_search
-    
     print(f"[Step 2] 유관 RFP 검색 요청")
     print(f"  - 파일: {file.filename}")
     print(f"  - notice_id: {notice_id}")
@@ -213,6 +216,7 @@ async def api_run_step2(
         
         if ext == ".pdf":
             pages = extract_text_from_pdf(tmp_path)
+            # ✅ 수정: pages가 리스트면 문자열로 변환
             if isinstance(pages, list):
                 parsed_text = "\n".join(str(p) for p in pages)
             else:
@@ -221,12 +225,15 @@ async def api_run_step2(
             
         elif ext == ".docx":
             blocks = parse_docx_to_blocks(tmp_path, "tmp")
+            # ✅ 수정: blocks가 dict나 list면 적절히 처리
             if isinstance(blocks, list):
+                # 리스트의 각 항목을 문자열로 변환
                 parsed_text = "\n".join(
                     str(b.get('text', '') if isinstance(b, dict) else b) 
                     for b in blocks
                 )
             elif isinstance(blocks, dict):
+                # dict면 'content' 키를 찾아서 사용
                 parsed_text = str(blocks.get('content', str(blocks)))
             else:
                 parsed_text = str(blocks)
@@ -254,6 +261,113 @@ async def api_run_step2(
     except Exception as e:
         import traceback
         print(f"  ❌ 오류: {str(e)}")
+        print(traceback.format_exc())  # ← 전체 에러 스택 출력
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "message": str(e)}
+        )
+    
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+# ============================================
+# Step 3: PPT 생성 (전체 워크플로우)
+# ============================================
+@app.post("/api/analyze/step3")
+async def api_run_step4(
+    file: UploadFile = File(...),
+    notice_id: int = Form(None),
+    token: str = Form(None)
+):
+    """PPT 생성 전체 워크플로우"""
+    from features.ppt_maker.nodes_code.extract_text_node import extract_text
+    from features.ppt_maker.nodes_code.section_split_node import section_split_node
+    from features.ppt_maker.nodes_code.section_deck_generation_node import section_deck_generation_node
+    from features.ppt_maker.nodes_code.merge_deck_node import merge_deck_node
+    from features.ppt_maker.nodes_code.gamma_generation_node import gamma_generation_node
+    
+    print(f"[Step 3] PPT 생성 요청: {file.filename}, notice_id={notice_id}")
+    
+    os.makedirs("tmp", exist_ok=True)
+    ext = os.path.splitext(file.filename)[1].lower()
+    tmp_path = os.path.join("tmp", f"{uuid.uuid4().hex}{ext}")
+    
+    try:
+        # 파일 저장
+        content = await file.read()
+        with open(tmp_path, "wb") as f:
+            f.write(content)
+        print(f"  ✅ 파일 저장: {tmp_path}")
+        
+        # State 초기화
+        state = {
+            "source_path": tmp_path,
+            "parsing_out_dir": "tmp/parsing",
+            "gemini_model": "gemini-2.0-flash-exp",
+            "gemini_temperature": 0.4,
+            "gemini_max_output_tokens": 4096,
+            "gamma_timeout_sec": 600,
+            "output_dir": "output",
+        }
+        
+        # 1) 텍스트 추출
+        print(f"  [1/5] 텍스트 추출...")
+        extract_text(state)
+        print(f"  ✅ {len(state.get('extracted_text', ''))} 글자")
+        
+        # 2) 섹션 분할
+        print(f"  [2/5] 섹션 분할...")
+        section_split_node(state)
+        sections = state.get("sections", [])
+        print(f"  ✅ {len(sections)}개 섹션")
+        
+        # 3) 슬라이드 생성 (Gemini)
+        print(f"  [3/5] 슬라이드 생성...")
+        section_deck_generation_node(state)
+        total = sum(len(v.get("slides", [])) for v in state.get("section_decks", {}).values())
+        print(f"  ✅ {total}장")
+        
+        # 4) 병합
+        print(f"  [4/5] 병합...")
+        merge_deck_node(state)
+        merged = len(state.get("deck_json", {}).get("slides", []))
+        print(f"  ✅ {merged}장")
+        
+        # 5) PPTX 생성 (Gamma)
+        print(f"  [5/5] PPTX 생성...")
+        gamma_generation_node(state)
+        pptx_path = state.get("pptx_path")
+        print(f"  ✅ {pptx_path}")
+        
+        # 결과
+        result = {
+            "deck_title": state.get("deck_title"),
+            "total_slides": merged,
+            "pptx_path": pptx_path,
+        }
+        
+        # Spring Boot 저장 (선택)
+        if notice_id and token:
+            try:
+                spring_response = requests.post(
+                    "http://localhost:8080/api/ppt/save",
+                    json={
+                        "noticeId": notice_id,
+                        "deckTitle": result["deck_title"],
+                        "pptxPath": pptx_path,
+                    },
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=10
+                )
+                result["db_saved"] = spring_response.status_code == 200
+            except:
+                result["db_saved"] = False
+        
+        return JSONResponse({"status": "success", "data": result})
+    
+    except Exception as e:
+        import traceback
         print(traceback.format_exc())
         return JSONResponse(
             status_code=500,
@@ -270,28 +384,22 @@ async def api_run_step2(
 @app.post("/api/analyze/step4")
 async def api_run_step4(
     file: UploadFile = File(...),
-    notice_id: int = Form(None),
-    token: str = Form(None)
+    notice_id: int = None,
+    token: str = None
 ):
     """
     Step 4: PPT 스크립트 생성 및 DB 저장
-    - PPT 파일을 받아서 발표 대본 및 Q&A 생성
-    - Spring Boot로 결과 전송하여 DB 저장
     """
-    from features.ppt_script.main_script import main as run_script_gen
-    
     print(f"[Step 4] 스크립트 생성 요청: {file.filename}, notice_id={notice_id}")
     
     os.makedirs("tmp", exist_ok=True)
     tmp_path = os.path.join("tmp", f"{uuid.uuid4().hex}.pptx")
     
     try:
-        # 파일 저장
         content = await file.read()
         with open(tmp_path, "wb") as f:
             f.write(content)
         
-        # 스크립트 생성
         result = run_script_gen(pptx_path=tmp_path)
         
         if result:

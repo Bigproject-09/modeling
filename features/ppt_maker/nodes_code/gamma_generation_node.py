@@ -10,7 +10,7 @@
 - state["gamma_timeout_sec"] (선택)
 - state["output_dir"], state["output_filename"] (선택)
 """
-
+#gamma_generation_node.py
 from __future__ import annotations
 
 import os

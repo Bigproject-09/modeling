@@ -8,7 +8,7 @@
 주의:
 - 이 프로젝트의 기존 파서(document_parsing.py)를 그대로 활용한다.
 """
-
+#extract_text_node.py
 from __future__ import annotations
 
 import json

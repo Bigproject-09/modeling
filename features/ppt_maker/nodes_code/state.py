@@ -7,7 +7,7 @@
 - state는 "노드 간 데이터 계약"이다.
 - total=False 이므로 일부 키는 선택이지만, 파이프라인 핵심 키는 명확히 정의한다.
 """
-
+#state.py
 from __future__ import annotations
 
 from typing import Any, Dict, List, TypedDict

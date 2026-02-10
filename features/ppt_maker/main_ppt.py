@@ -10,7 +10,7 @@
   또는
   python -m features.ppt_maker.main_ppt --checkpoint output/checkpoints/deck_checkpoint_....json
 """
-
+#main_ppt.py
 import argparse
 import os
 import json  # ✅ (ADD) checkpoint load 용
