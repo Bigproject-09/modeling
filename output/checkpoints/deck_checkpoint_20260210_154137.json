@@ -1,0 +1,133 @@
+{
+  "deck_title": "차세대 해양·극지 기후예측시스템 개발",
+  "slides": [
+    {
+      "section": "표지",
+      "slide_title": "차세대 해양·극지 기후예측시스템 개발",
+      "key_message": "",
+      "bullets": [],
+      "evidence": [],
+      "image_needed": false,
+      "image_type": "",
+      "image_brief_ko": "",
+      "TABLE_MD": "",
+      "DIAGRAM_SPEC_KO": "",
+      "CHART_SPEC_KO": "",
+      "order": 1
+    },
+    {
+      "section": "목차",
+      "slide_title": "목차",
+      "key_message": "발표 내용 구성",
+      "bullets": [
+        "1. 기관 소개",
+        "2. 사업 개요",
+        "3. 연구 목표",
+        "4. 연구 필요성",
+        "5. 연구 내용",
+        "6. 추진 계획",
+        "7. 기대 효과",
+        "8. 활용 계획"
+      ],
+      "evidence": [],
+      "image_needed": false,
+      "image_type": "",
+      "image_brief_ko": "",
+      "TABLE_MD": "",
+      "DIAGRAM_SPEC_KO": "",
+      "CHART_SPEC_KO": "",
+      "order": 2
+    },
+    {
+      "section": "기관 소개",
+      "slide_title": "기관 소개 및 수행역량",
+      "key_message": "수행기관의 핵심역량·인프라·유사과제 경험을 간결하게 제시",
+      "bullets": [
+        "수행조직: 총괄책임자/PM/핵심연구진 구성 및 역할",
+        "핵심역량: 관련 기술(모델/데이터/시스템) 수행 경험",
+        "인프라: GPU/서버/데이터 파이프라인/실증 환경 보유",
+        "유사과제/성과: 논문·특허·실증·기술이전 등(있으면 기재)"
+      ],
+      "evidence": [],
+      "image_needed": false,
+      "image_type": "",
+      "image_brief_ko": "",
+      "TABLE_MD": "",
+      "DIAGRAM_SPEC_KO": "",
+      "CHART_SPEC_KO": "",
+      "order": 3
+    },
+    {
+      "order": 4,
+      "section": "사업 개요",
+      "slide_title": "사업 개요",
+      "key_message": "",
+      "bullets": [
+        "(미기재)"
+      ],
+      "evidence": [
+        {
+          "type": "미기재",
+          "text": "미기재"
+        }
+      ],
+      "image_needed": false,
+      "image_type": "none",
+      "image_brief_ko": "",
+      "TABLE_MD": "",
+      "DIAGRAM_SPEC_KO": "",
+      "CHART_SPEC_KO": ""
+    },
+    {
+      "section": "기대 효과",
+      "slide_title": "기대 효과(요약)",
+      "key_message": "기술·경제·사회적 효과를 정량/정성 지표로 제시",
+      "bullets": [
+        "기술적 효과: 예측 정확도/연산 효율/모델 안정성 개선(원문 기반 지표 우선)",
+        "경제·산업적 효과: 활용 분야 확산 및 비용 절감/생산성 향상",
+        "사회·정책적 기여: 재난·안전/기후 리스크 대응 고도화"
+      ],
+      "evidence": [],
+      "image_needed": false,
+      "image_type": "table",
+      "image_brief_ko": "",
+      "TABLE_MD": "| 구분 | 성과 내용 | 지표/근거 |\n|---|---|---|\n| 기술 | 예측/모델 고도화 | 미기재 |\n| 경제 | 비용 절감/효율화 | 미기재 |\n| 사회 | 리스크 대응 | 미기재 |",
+      "DIAGRAM_SPEC_KO": "",
+      "CHART_SPEC_KO": "",
+      "order": 5
+    },
+    {
+      "section": "활용 계획",
+      "slide_title": "연구개발성과 활용 계획",
+      "key_message": "성과의 현장 적용·사업화·확산 경로를 명확히 제시",
+      "bullets": [
+        "사업화: 기술이전/라이선스/공동사업화 대상 및 일정(안)",
+        "공공활용: 관련 기관·지자체·공공플랫폼 연계(적용 시나리오)",
+        "표준/인증: 표준화 로드맵 및 인증/검증 계획",
+        "확산: 오픈API/데이터 공유 범위, 사용자 교육·홍보 계획"
+      ],
+      "evidence": [],
+      "image_needed": false,
+      "image_type": "diagram",
+      "image_brief_ko": "",
+      "TABLE_MD": "",
+      "DIAGRAM_SPEC_KO": "단계형 로드맵(원천기술→서비스구축→기술이전/사업화→확산) 4단계, 각 단계에 2~3개 핵심 항목 라벨링",
+      "CHART_SPEC_KO": "",
+      "order": 6
+    },
+    {
+      "section": "Q&A",
+      "slide_title": "Q&A / 감사합니다",
+      "key_message": "",
+      "bullets": [],
+      "evidence": [],
+      "image_needed": false,
+      "image_type": "",
+      "image_brief_ko": "",
+      "TABLE_MD": "",
+      "DIAGRAM_SPEC_KO": "",
+      "CHART_SPEC_KO": "",
+      "order": 7
+    }
+  ]
+}

@@ -257,7 +257,7 @@ async def api_run_step4(
         state = {
             "source_path": tmp_path,
             "parsing_out_dir": "tmp/parsing",
-            "gemini_model": "gemini-2.0-flash-exp",
+            "gemini_model": "gemini-2.5-flash",
             "gemini_temperature": 0.4,
             "gemini_max_output_tokens": 4096,
             "gamma_timeout_sec": 600,
