@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from pptx import Presentation
 from pptx.util import Inches, Pt
-from pptx.enum.shapes import MSO_SHAPE_TYPE
+from pptx.enum.shapes import MSO_SHAPE_TYPE, MSO_AUTO_SHAPE_TYPE
 from pptx.dml.color import RGBColor
 
 
@@ -98,6 +98,67 @@ def _write_agenda(slide) -> None:
         else:
             r = p.add_run()
             r.font.size = Pt(22)
+
+def _add_solid_rect(slide, *, left: float, top: float, width: float, height: float, rgb: Tuple[int, int, int]) -> None:
+    shp = slide.shapes.add_shape(
+        MSO_AUTO_SHAPE_TYPE.RECTANGLE,
+        Inches(left),
+        Inches(top),
+        Inches(width),
+        Inches(height),
+    )
+    shp.fill.solid()
+    shp.fill.fore_color.rgb = RGBColor(*rgb)
+    shp.line.fill.background()
+
+
+def _decorate_cover_slide(slide) -> None:
+    # 상단/하단 컬러 밴드로 표지 밀도 보강
+    _add_solid_rect(slide, left=0.0, top=0.0, width=13.333, height=0.45, rgb=(15, 76, 129))
+    _add_solid_rect(slide, left=0.0, top=7.2, width=13.333, height=0.18, rgb=(42, 157, 143))
+
+
+def _decorate_thanks_slide(slide) -> None:
+    # 마지막 슬라이드도 동일한 톤의 색상 포인트
+    _add_solid_rect(slide, left=0.0, top=0.0, width=0.22, height=7.5, rgb=(15, 76, 129))
+    _add_solid_rect(slide, left=0.22, top=7.05, width=13.11, height=0.30, rgb=(232, 241, 250))
+
+
+def _style_tables(prs: Presentation) -> None:
+    # 표 헤더/본문 색상 통일로 가독성 보강
+    for slide in prs.slides:
+        for sh in slide.shapes:
+            if not getattr(sh, "has_table", False):
+                continue
+            tbl = sh.table
+            rows = len(tbl.rows)
+            cols = len(tbl.columns)
+            if rows <= 0 or cols <= 0:
+                continue
+
+            for r in range(rows):
+                for c in range(cols):
+                    cell = tbl.cell(r, c)
+                    cell.fill.solid()
+                    if r == 0:
+                        cell.fill.fore_color.rgb = RGBColor(15, 76, 129)   # header
+                    elif r % 2 == 1:
+                        cell.fill.fore_color.rgb = RGBColor(236, 244, 252)  # zebra1
+                    else:
+                        cell.fill.fore_color.rgb = RGBColor(248, 251, 255)  # zebra2
+
+                    tf = cell.text_frame
+                    tf.word_wrap = True
+                    for p in tf.paragraphs:
+                        for run in p.runs:
+                            run.font.color.rgb = RGBColor(255, 255, 255) if r == 0 else RGBColor(33, 37, 41)
+                            if r == 0:
+                                run.font.bold = True
+                                if not run.font.size:
+                                    run.font.size = Pt(12)
+                            else:
+                                # 본문은 폰트를 조금 줄여 overflow 완화
+                                run.font.size = Pt(10.5)
 
 
 def _slides_with_structured_visuals(deck_json: Dict[str, Any]) -> Set[int]:
@@ -230,8 +291,17 @@ def postprocess_diagrams(pptx_path: str, deck_json: Dict[str, Any], state: Optio
         if not _slide_has_structured_spec(agenda_spec):
             _write_agenda(prs.slides[1])
 
+    # 1.5) 표지/마지막 슬라이드 색상 포인트 보강
+    if len(prs.slides) >= 1:
+        _decorate_cover_slide(prs.slides[0])
+    if len(prs.slides) >= 1:
+        _decorate_thanks_slide(prs.slides[-1])
+
     # 2) AI 이미지/placeholder 제거(표/도표/다이어그램은 보존)
     _remove_visual_placeholders(prs, keep_picture_slide_idxs)
+
+    # 2.5) 표 스타일 통일
+    _style_tables(prs)
 
     # 3) 엔딩 정리
     _trim_ending_slides(prs)

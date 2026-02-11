@@ -62,14 +62,20 @@ def _find_section_headers(lines: List[str]) -> List[Tuple[int, str]]:
         line_compact = re.sub(r"[\[\]【】]", "", line)
         line_compact = re.sub(r"^[\s\d\.\-–—ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+", "", line_compact).strip()
 
-        for sec in SECTION_ORDER:
+        # 후보가 여러 개면 "긴 키워드 우선", 동률은 섹션 순서 우선
+        candidates: List[Tuple[int, int, str]] = []
+        for sec_idx, sec in enumerate(SECTION_ORDER):
             for key in SECTION_RULES.get(sec, []):
                 if key and (key in line_compact):
-                    found.append((i, sec))
-                    break
-            else:
-                continue
-            break
+                    bonus = 0
+                    if sec == "연구 목표" and any(k in line_compact for k in ["연구목표", "연구 목표", "최종 목표", "세부 목표"]):
+                        bonus = 10
+                    score = len(key) + bonus
+                    candidates.append((score, -sec_idx, sec))
+
+        if candidates:
+            candidates.sort(reverse=True)
+            found.append((i, candidates[0][2]))
 
     # 같은 라인에서 여러 섹션이 잡히는 경우 첫 섹션만 남김
     dedup: Dict[int, str] = {}

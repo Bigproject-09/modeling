@@ -26,7 +26,7 @@ def _save_checkpoint(state: dict) -> str:
 
 
 def _slides_to_input_text(deck: Dict[str, Any]) -> str:
-    title = (deck.get("deck_title") or "").strip() or "(과제명 미기재)"
+    title = (deck.get("deck_title") or "").strip() or "발표자료"
     slides: List[Dict[str, Any]] = deck.get("slides") or []
     n = len(slides)
 
@@ -94,8 +94,6 @@ ABSOLUTE RULES:
         if bullets:
             for b in bullets:
                 lines.append(f"- {b}")
-        else:
-            lines.append("- (미기재)")
 
         if ev_lines:
             lines.append("EVIDENCE:")
@@ -215,7 +213,18 @@ def _avoid_windows_lock(path: str) -> str:
 def _safe_filename(name: str) -> str:
     name = re.sub(r"[\\/:*?\"<>|]+", " ", str(name or ""))
     name = re.sub(r"\s+", " ", name).strip()
-    return name[:80] or "result"
+    if not name:
+        return "result"
+    # 불필요 접미/기호 정리 후 단어 경계 기준으로 축약
+    name = re.sub(r"[()\\[\\]{}]", "", name)
+    max_len = 36
+    if len(name) <= max_len:
+        return name
+    cut = name[:max_len + 1]
+    ws = cut.rfind(" ")
+    if ws >= 16:
+        return cut[:ws].rstrip()
+    return name[:max_len].rstrip()
 
 
 def gamma_generation_node(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -235,7 +244,10 @@ def gamma_generation_node(state: Dict[str, Any]) -> Dict[str, Any]:
     # ✅ 파일명: 과제명 기반
     if not (state.get("output_filename") or "").strip():
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        title = _safe_filename(deck.get("deck_title") or "result")
+        cover_title = ""
+        if slides and isinstance(slides[0], dict):
+            cover_title = str(slides[0].get("slide_title") or "").strip()
+        title = _safe_filename(cover_title or deck.get("deck_title") or "result")
         output_filename = f"{title}_{ts}.pptx"
     else:
         output_filename = (state.get("output_filename") or "").strip()

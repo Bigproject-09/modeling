@@ -26,10 +26,46 @@ AGENDA_SUBTITLE = {
     "활용 계획": "최종 결과물 및 실용화 목표",
 }
 
-
 def _norm(s: Any) -> str:
     s = str(s or "").replace("\u00a0", " ")
     return re.sub(r"\s+", " ", s).strip()
+
+def _clean_text(v: Any) -> str:
+    t = _norm(v)
+    t = t.replace("(미기재)", "").replace("미기재", "").strip(" -:|")
+    return _norm(t)
+
+def _has_effective_evidence(evidence: Any) -> bool:
+    if not isinstance(evidence, list):
+        return False
+    for e in evidence:
+        if isinstance(e, dict):
+            if _clean_text(e.get("text")):
+                return True
+        elif _clean_text(e):
+            return True
+    return False
+
+def _is_speculative_bullet(text: str) -> bool:
+    t = _clean_text(text)
+    if not t:
+        return True
+    banned = [
+        "예상", "전망", "추정", "가능", "기대", "잠재",
+        "할 수", "될 수", "보인다", "판단", "추후", "향후",
+    ]
+    return any(k in t for k in banned)
+
+def _soft_filter_bullets_without_evidence(bullets: Any) -> List[str]:
+    xs = [_clean_text(b) for b in (bullets or []) if _clean_text(b)]
+    if not xs:
+        return []
+    # 근거가 없을 때는 추정/전망성 문구를 우선 제거
+    hard = [b for b in xs if not _is_speculative_bullet(b)]
+    if hard:
+        return hard[:3]
+    # 모두 추정성 문구면 전부 삭제하지 않고 1개만 유지(빈 슬라이드 방지)
+    return xs[:2]
 
 def _wrap_cover_title(title: str, max_line: int = 24, max_lines: int = 3) -> str:
     t = _norm(title)
@@ -139,30 +175,44 @@ def _fallback_title_from_filename(state: Dict[str, Any]) -> str:
 
 def _make_cover(deck_title: str, org_name: str = "") -> Dict[str, Any]:
     short_title = _short_cover_title(deck_title, max_chars=34)
-    full_title = _norm(deck_title) or "(과제명 미기재)"
-    subtitle = "국가 R&D 선정평가 발표자료"
+    full_title = _clean_text(deck_title) or "발표자료"
     org = _norm(org_name)
-    org_line = org if org else "(미기재)"
-
-    cover_table = (
+    cover_table_lines = [
         "| 항목 | 내용 |\n"
         "|---|---|\n"
-        f"| 발표 과제명 | {full_title} |\n"
-        f"| 주관기관 | {org_line} |\n"
-        "| 발표 구분 | 선정평가 발표 |\n"
+        f"| 발표 제목 | {full_title} |\n"
+    ]
+    if org:
+        cover_table_lines.append(f"| 주관기관 | {org} |\n")
+    cover_table = "".join(cover_table_lines)
+
+    cover_diagram = (
+        "LAYOUT: clean title cover\n"
+        "STYLE:\n"
+        "- Top horizontal color band (deep blue)\n"
+        "- Bottom thin accent line (cyan)\n"
+        "- Two subtle circles at top-right as decoration\n"
+        "- No photo, no icon, no placeholder\n"
+        "NODES:\n"
+        "- id: B1 | label: TOP_BAND | role: color #0F4C81\n"
+        "- id: B2 | label: BOTTOM_LINE | role: color #2A9D8F\n"
+        "- id: D1 | label: DECOR_1 | role: circle #DDEAF7\n"
+        "- id: D2 | label: DECOR_2 | role: circle #BFD9EE\n"
+        "EDGES:\n"
+        "- from: B1 | to: B2 | label: layout"
     )
 
     return {
         "section": "표지",
         "slide_title": short_title,
-        "key_message": subtitle,
-        "bullets": ["핵심 목표와 추진 전략을 중심으로 설명드립니다."],
+        "key_message": "",
+        "bullets": [],
         "evidence": [],
         "image_needed": False,
         "image_type": "none",
         "image_brief_ko": "",
         "TABLE_MD": cover_table,
-        "DIAGRAM_SPEC_KO": "",
+        "DIAGRAM_SPEC_KO": cover_diagram,
         "CHART_SPEC_KO": "",
         "order": 1,
     }
@@ -172,7 +222,7 @@ def _make_agenda(items: List[str]) -> Dict[str, Any]:
     rows: List[str] = []
     for i, sec in enumerate(items[:8], 1):
         sub = AGENDA_SUBTITLE.get(sec, "")
-        rows.append(f"| {i:02d} | {i:02d}. {sec} | {sub} |")
+        rows.append(f"| {i:02d} | {sec} | {sub} |")
     agenda_table = (
         "| 번호 | 항목 | 설명 |\n"
         "|---|---|---|\n"
@@ -183,7 +233,7 @@ def _make_agenda(items: List[str]) -> Dict[str, Any]:
     return {
         "section": "목차",
         "slide_title": "목차",
-        "key_message": "아래 순서에 따라 발표를 진행하겠습니다.",
+        "key_message": "",
         "bullets": [],
         "evidence": [],
         "image_needed": False,
@@ -199,27 +249,40 @@ def _make_agenda(items: List[str]) -> Dict[str, Any]:
 
 def _make_thanks(order: int, org_name: str = "") -> Dict[str, Any]:
     org = _norm(org_name)
-    org_line = org if org else "(미기재)"
-    thanks_table = (
+    thanks_table_lines = [
         "| 항목 | 내용 |\n"
         "|---|---|\n"
         "| Q&A 진행 | 질의응답(Q&A) |\n"
-        "| 질의 권장 | 연구 목표 · 추진계획 · 기대효과 중심 |\n"
-        "| 마무리 | 질문 주시면 바로 답변드리겠습니다 |\n"
-        f"| 주관기관 | {org_line} |\n"
+    ]
+    if org:
+        thanks_table_lines.append(f"| 주관기관 | {org} |\n")
+    thanks_table = "".join(thanks_table_lines)
+    thanks_diagram = (
+        "LAYOUT: closing slide with calm corporate accent\n"
+        "STYLE:\n"
+        "- Left vertical accent bar (deep blue)\n"
+        "- Bottom soft band (light blue)\n"
+        "- One rounded rectangle near footer\n"
+        "- No photo, no icon, no placeholder\n"
+        "NODES:\n"
+        "- id: A1 | label: LEFT_BAR | role: color #0F4C81\n"
+        "- id: A2 | label: BOTTOM_BAND | role: color #E8F1FA\n"
+        "- id: A3 | label: FOOTER_BOX | role: round-rect #DDEAF7\n"
+        "EDGES:\n"
+        "- from: A1 | to: A2 | label: layout"
     )
 
     return {
         "section": "Q&A",
         "slide_title": "감사합니다",
         "key_message": "질의응답",
-        "bullets": ["경청해 주셔서 감사합니다."],
+        "bullets": [],
         "evidence": [],
         "image_needed": False,
         "image_type": "none",
         "image_brief_ko": "",
         "TABLE_MD": thanks_table,
-        "DIAGRAM_SPEC_KO": "",
+        "DIAGRAM_SPEC_KO": thanks_diagram,
         "CHART_SPEC_KO": "",
         "order": order,
     }
@@ -236,13 +299,13 @@ def merge_deck_node(state: Dict[str, Any]) -> Dict[str, Any]:
     extracted_text = state.get("extracted_text") or ""
     guessed = _extract_title_from_extracted_text(extracted_text)
 
-    if (not deck_title) or (deck_title == "(과제명 미기재)"):
+    if (not deck_title) or ("미기재" in deck_title):
         if guessed:
             deck_title = guessed
         else:
             # ✅ 마지막 fallback: 파일명
             fn = _fallback_title_from_filename(state)
-            deck_title = fn or "(과제명 미기재)"
+            deck_title = fn or "발표자료"
 
     section_decks: Dict[str, Any] = state.get("section_decks") or {}
 
@@ -275,8 +338,8 @@ def merge_deck_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
             # 섹션 확정 + 텍스트 정규화
             s2["section"] = sec
-            s2["slide_title"] = _norm(s2.get("slide_title"))
-            s2["key_message"] = _norm(s2.get("key_message"))
+            s2["slide_title"] = _clean_text(s2.get("slide_title"))
+            s2["key_message"] = _clean_text(s2.get("key_message"))
 
             # 이미지 생성 플래그는 끔
             s2["image_needed"] = False
@@ -314,11 +377,11 @@ def merge_deck_node(state: Dict[str, Any]) -> Dict[str, Any]:
                 if any(k in title_n for k in ["구성도", "아키텍처", "모듈", "플랫폼", "구조", "시스템구성"]):
                     s2["DIAGRAM_SPEC_KO"] = (
                         "NODES:\n"
-                        "- id: N1 | label: 입력/수집 | role: (미기재)\n"
-                        "- id: N2 | label: 전처리 | role: (미기재)\n"
-                        "- id: N3 | label: 핵심 처리 | role: (미기재)\n"
-                        "- id: N4 | label: 저장/관리 | role: (미기재)\n"
-                        "- id: N5 | label: 서비스/출력 | role: (미기재)\n"
+                        "- id: N1 | label: 입력/수집 | role: 데이터 확보\n"
+                        "- id: N2 | label: 전처리 | role: 품질 정제\n"
+                        "- id: N3 | label: 핵심 처리 | role: 분석/모델링\n"
+                        "- id: N4 | label: 저장/관리 | role: 결과 관리\n"
+                        "- id: N5 | label: 서비스/출력 | role: 활용/제공\n"
                         "EDGES:\n"
                         "- from: N1 | to: N2 | label: 데이터\n"
                         "- from: N2 | to: N3 | label: 데이터\n"
@@ -328,11 +391,11 @@ def merge_deck_node(state: Dict[str, Any]) -> Dict[str, Any]:
                 elif any(k in title_n for k in ["데이터흐름", "처리과정", "처리흐름", "파이프라인", "워크플로우"]):
                     s2["DIAGRAM_SPEC_KO"] = (
                         "NODES:\n"
-                        "- id: N1 | label: 데이터 입력 | role: (미기재)\n"
-                        "- id: N2 | label: 정제/전처리 | role: (미기재)\n"
-                        "- id: N3 | label: 분석/모델링 | role: (미기재)\n"
-                        "- id: N4 | label: 검증/평가 | role: (미기재)\n"
-                        "- id: N5 | label: 결과 제공 | role: (미기재)\n"
+                        "- id: N1 | label: 데이터 입력 | role: 수집\n"
+                        "- id: N2 | label: 정제/전처리 | role: 품질 정비\n"
+                        "- id: N3 | label: 분석/모델링 | role: 핵심 처리\n"
+                        "- id: N4 | label: 검증/평가 | role: 신뢰성 확인\n"
+                        "- id: N5 | label: 결과 제공 | role: 서비스 반영\n"
                         "EDGES:\n"
                         "- from: N1 | to: N2 | label: raw\n"
                         "- from: N2 | to: N3 | label: clean\n"
@@ -342,11 +405,11 @@ def merge_deck_node(state: Dict[str, Any]) -> Dict[str, Any]:
                 elif any(k in title_n for k in ["조직도", "수행체계", "추진체계", "거버넌스", "역할분담"]):
                     s2["DIAGRAM_SPEC_KO"] = (
                         "NODES:\n"
-                        "- id: N1 | label: 총괄/PM | role: (미기재)\n"
-                        "- id: N2 | label: 기술개발 | role: (미기재)\n"
-                        "- id: N3 | label: 데이터/플랫폼 | role: (미기재)\n"
-                        "- id: N4 | label: 검증/실증 | role: (미기재)\n"
-                        "- id: N5 | label: 사업화/확산 | role: (미기재)\n"
+                        "- id: N1 | label: 총괄/PM | role: 일정/품질 총괄\n"
+                        "- id: N2 | label: 기술개발 | role: 핵심기술 구현\n"
+                        "- id: N3 | label: 데이터/플랫폼 | role: 인프라 운영\n"
+                        "- id: N4 | label: 검증/실증 | role: 성능 검증\n"
+                        "- id: N5 | label: 사업화/확산 | role: 활용 확산\n"
                         "EDGES:\n"
                         "- from: N1 | to: N2 | label: 관리\n"
                         "- from: N1 | to: N3 | label: 관리\n"
@@ -357,13 +420,60 @@ def merge_deck_node(state: Dict[str, Any]) -> Dict[str, Any]:
                     s2["TABLE_MD"] = (
                         "| 구분 | 내용 |\n"
                         "|---|---|\n"
-                        "| 1단계 | (미기재) |\n"
-                        "| 2단계 | (미기재) |\n"
-                        "| 3단계 | (미기재) |\n"
+                        "| 1단계 | 기반 구축 및 요구사항 정리 |\n"
+                        "| 2단계 | 핵심 기술 개발 및 통합 |\n"
+                        "| 3단계 | 검증 및 적용 확산 |\n"
                     )
+                else:
+                    # 시각요소가 전혀 없는 슬라이드를 최소 표 형태로 보강
+                    bullets_for_table = [str(b).strip() for b in (s2.get("bullets") or []) if str(b).strip()][:3]
+                    if bullets_for_table:
+                        rows = "\n".join([f"| 핵심 {i+1} | {txt} |" for i, txt in enumerate(bullets_for_table)])
+                        s2["TABLE_MD"] = (
+                            "| 항목 | 내용 |\n"
+                            "|---|---|\n"
+                            + rows
+                            + "\n"
+                        )
+                    else:
+                        s2["DIAGRAM_SPEC_KO"] = (
+                            "NODES:\n"
+                            "- id: N1 | label: 핵심 주제 | role: center\n"
+                            "- id: N2 | label: 주요 내용 1 | role: branch\n"
+                            "- id: N3 | label: 주요 내용 2 | role: branch\n"
+                            "- id: N4 | label: 주요 내용 3 | role: branch\n"
+                            "EDGES:\n"
+                            "- from: N1 | to: N2 | label: 포함\n"
+                            "- from: N1 | to: N3 | label: 포함\n"
+                            "- from: N1 | to: N4 | label: 포함\n"
+                        )
 
             s2["order"] = order
             order += 1
+
+            # 마지막 정리: '미기재' 노출 제거
+            s2["slide_title"] = _clean_text(s2.get("slide_title")) or "핵심 내용"
+            s2["key_message"] = _clean_text(s2.get("key_message"))
+            s2["bullets"] = [_clean_text(b) for b in (s2.get("bullets") or []) if _clean_text(b)]
+            for k in ["TABLE_MD", "DIAGRAM_SPEC_KO", "CHART_SPEC_KO"]:
+                s2[k] = str(s2.get(k) or "").replace("(미기재)", "").replace("미기재", "").strip()
+
+            # 근거가 비어있는 슬라이드는 bullet을 보수적으로 축소(빈 슬라이드 방지)
+            if not _has_effective_evidence(s2.get("evidence")):
+                s2["bullets"] = _soft_filter_bullets_without_evidence(s2.get("bullets"))
+
+            # 최소 밀도 보장: 텍스트/시각요소가 모두 비면 1행 표 추가
+            has_table = bool((s2.get("TABLE_MD") or "").strip())
+            has_diag = bool((s2.get("DIAGRAM_SPEC_KO") or "").strip())
+            has_chart = bool((s2.get("CHART_SPEC_KO") or "").strip())
+            has_bullets = bool(s2.get("bullets"))
+            if not (has_table or has_diag or has_chart or has_bullets):
+                base = _clean_text(s2.get("key_message")) or _clean_text(s2.get("slide_title")) or "핵심 내용 정리"
+                s2["TABLE_MD"] = (
+                    "| 항목 | 내용 |\n"
+                    "|---|---|\n"
+                    f"| 핵심 | {base} |\n"
+                )
             slides.append(s2)
 
     # 4) 마지막 감사/Q&A

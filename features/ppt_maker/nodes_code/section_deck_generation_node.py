@@ -83,6 +83,8 @@ ENDSLIDE
 - 영어 문장/영어 소제목/영어 불릿 금지.
 - 단, 고유명사/약어(API, GPU 등)만 예외적으로 허용.
 - 가능한 한 '한글 용어(괄호에 약어)' 형태로 쓴다. 예: 그래픽처리장치(GPU)
+- 문장 종결은 발표 메모형으로 작성한다. (예: ~확보, ~예정, ~검토, ~적용)
+- '~입니다/~합니다/~하였다' 같은 서술형 종결문은 사용하지 않는다.
 
 """.strip()
 
@@ -305,6 +307,13 @@ def section_deck_generation_node(state: Dict[str, Any]) -> Dict[str, Any]:
         if not sec_title:
             continue
 
+        # 기관소개는 근거 데이터가 부족하면 생성하지 않음(환각 방지)
+        if sec_title == "기관 소개":
+            company_name = str(((state.get("company_profile") or {}).get("name") or state.get("org_name") or "")).strip()
+            # 텍스트 근거가 너무 짧고(company DB도 없음)일 때는 건너뜀
+            if len(sec_text) < 120 and not company_name:
+                continue
+
         # Q&A는 여기서 만들지 않음(merge에서 강제 추가)
         if sec_title.upper() in {"Q&A", "QNA", "QA"} or sec_title in {"질의응답", "질문", "응답"}:
             continue
@@ -318,8 +327,9 @@ def section_deck_generation_node(state: Dict[str, Any]) -> Dict[str, Any]:
         - 모든 출력은 한국어. 영어 문장 금지(고유명사/약어만 예외).
         - 메타 문장(본 슬라이드/추후 보완/제공되지 않아) 절대 금지. 부족하면 '미기재'로만 표기.
         - 목차/표지/챕터/파트 같은 구분용 단독 슬라이드 생성 금지.
-        - 시각요소(TABLE/도식/차트)는 선택 사항이다.
+        - 각 슬라이드는 TABLE/DIAGRAM/CHART 중 최소 1개를 우선 작성한다.
         - 이미지 생성(IMAGE_NEEDED)은 항상 false.
+        - 문장 종결은 메모형(~확보/~예정/~검토/~적용) 사용. '~입니다/~합니다' 금지.
         """.strip()
 
 
