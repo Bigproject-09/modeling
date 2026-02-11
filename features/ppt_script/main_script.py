@@ -73,31 +73,43 @@ def extract_text_from_pptx(pptx_path: str) -> str:
         return None
 
 
-def main():
+def main(pptx_path: str = None):
     """
     Step 4: PPT 발표 대본 및 Q&A 생성 메인 함수
-    - PPT 파일에서 텍스트 추출
-    - LLM을 통해 발표 대본 및 예상 질문/답변 생성
-    - JSON 형식으로 결과 저장
+    
+    Args:
+        pptx_path: PPT 파일 경로 (선택적, 없으면 기본 경로 사용)
+    
+    Returns:
+        dict: 생성된 스크립트 데이터 또는 None
     """
     print("="*60)
     print("[Step 4] PPT 발표 대본 및 Q&A 생성")
     print("="*60)
 
     # 1. 입력 파일 경로 설정
-    input_folder = project_root / "data" / "script_input"
-    input_folder.mkdir(parents=True, exist_ok=True)
+    if pptx_path:
+        # 파라미터로 경로가 주어진 경우
+        target_file = Path(pptx_path)
+    else:
+        # 기본 경로 사용
+        input_folder = project_root / "data" / "script_input"
+        input_folder.mkdir(parents=True, exist_ok=True)
+        
+        target_file = input_folder / "ppt_ex.pptx"
+        if not target_file.exists():
+            pptx_files = list(input_folder.glob("*.pptx"))
+            if pptx_files:
+                target_file = pptx_files[0]
+            else:
+                print(f"[!] 오류: '{input_folder}' 폴더에 PPT 파일이 없습니다.")
+                print(f"    경로: {input_folder.absolute()}")
+                return None
     
-    # PPT 파일 찾기 (ppt_ex.pptx 또는 첫 번째 .pptx 파일)
-    target_file = input_folder / "ppt_ex.pptx"
+    # 파일 존재 확인
     if not target_file.exists():
-        pptx_files = list(input_folder.glob("*.pptx"))
-        if pptx_files:
-            target_file = pptx_files[0]
-        else:
-            print(f"[!] 오류: '{input_folder}' 폴더에 PPT 파일이 없습니다.")
-            print(f"    경로: {input_folder.absolute()}")
-            return
+        print(f"[!] 파일이 존재하지 않습니다: {target_file}")
+        return None
     
     print(f"[*] PPT 파일 읽는 중: {target_file.name}")
 
@@ -106,7 +118,7 @@ def main():
     
     if not ppt_text: 
         print(f"[!] PPT 파일을 읽을 수 없습니다: {target_file}")
-        return
+        return None
     
     print(f"[*] PPT 텍스트 추출 완료 (길이: {len(ppt_text)}자)")
 
@@ -131,12 +143,15 @@ def main():
         print(f"    - 슬라이드 대본: {slide_count}개")
         print(f"    - 예상 Q&A: {qna_count}개")
         print(f"    - 파일 위치: {output_path}")
+        
+        print("="*60)
+        print("[Step 4 완료]")
+        
+        return json_data
     else:
         print("[!] 대본 생성 실패")
-    
-    print("="*60)
-    print("[Step 4 완료]")
-
+        print("="*60)
+        return None
 
 if __name__ == "__main__":
     main()

@@ -153,8 +153,8 @@ def section_split_node(state: Dict[str, Any]) -> Dict[str, Any]:
     print("[DEBUG][split] section_chunks keys:", list(section_chunks.keys()))
     print("[DEBUG][split] missing:", [s for s in SECTION_ORDER if s not in section_chunks])
     
+    return {"section_chunks": section_chunks, "sections": sections}
+
 def _canon_title(t: str) -> str:
     # 연속 공백 -> 1개, 앞뒤 공백 제거
     return re.sub(r"\s+", " ", (t or "").strip())
-
-    return {"section_chunks": section_chunks, "sections": sections}
