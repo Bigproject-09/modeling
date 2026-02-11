@@ -108,7 +108,8 @@ async def parse_notice(file: UploadFile = File(...)):
     3. FastAPI: 파싱 수행 후 결과 JSON 반환 ← 이 함수
     4. Spring Boot: NoticeAttachment.markDone(parsedJson) 호출
     """
-    print(f"🔥 PARSE CALLED: {file.filename}")
+    print(f"PARSE CALLED: {file.filename}")
+    print(f"PARSE CALLED: {file.filename}")
 
     os.makedirs("tmp", exist_ok=True)
     ext = os.path.splitext(file.filename)[1].lower()
@@ -137,7 +138,7 @@ async def parse_notice(file: UploadFile = File(...)):
                 content={"error": f"Unsupported extension: {ext}"}
             )
 
-        print(f"✅ PARSE SUCCESS: {file.filename}")
+        print(f"PARSE SUCCESS: {file.filename}")
 
         # 파싱 결과만 반환 (DB 저장은 Spring에서)
         return JSONResponse(
