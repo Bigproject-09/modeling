@@ -22,6 +22,8 @@ load_dotenv()
 # =========================================================
 # ChromaDB 설정
 # =========================================================
+LAW_CHROMA_HOST = os.environ.get("LAW_CHROMA_HOST", "chroma_law")
+LAW_CHROMA_PORT = int(os.environ.get("LAW_CHROMA_PORT", "8001"))
 CHROMA_DB_DIR = os.environ.get("LAW_CHROMA_DB_DIR", r"C:/chroma_law")
 COLLECTION_NAME = os.environ.get("LAW_COLLECTION_NAME", "law_regulations")
 EMBED_MODEL_NAME = os.environ.get("LAW_EMBED_MODEL_NAME", "intfloat/multilingual-e5-base")
@@ -43,13 +45,13 @@ def init_law_search():
     print("ChromaDB 초기화 중...")
     
     # ChromaDB 클라이언트
-    _chroma_client = chromadb.PersistentClient(path=CHROMA_DB_DIR)
+    _chroma_client = chromadb.HttpClient(host=LAW_CHROMA_HOST, port=LAW_CHROMA_PORT)
     _chroma_collection = _chroma_client.get_collection(name=COLLECTION_NAME)
     
     # 임베딩 모델
     _embed_model = SentenceTransformer(EMBED_MODEL_NAME)
     
-    print(f"✓ ChromaDB 로드 완료 (문서 수: {_chroma_collection.count()}개)")
+    print(f"✓ ChromaDB 로드 완료 (HTTP: {LAW_CHROMA_HOST}:{LAW_CHROMA_PORT}, 문서 수: {_chroma_collection.count()}개)")
     
     return _chroma_collection, _embed_model
 

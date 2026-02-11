@@ -13,7 +13,11 @@ from features.rnd_search.main_search import main as run_search
 from features.ppt_script.main_script import main as run_script_gen
 from urllib.parse import quote
 
-load_dotenv()
+ENV_FILE = os.getenv("ENV_FILE", ".env")
+if os.path.exists(ENV_FILE):
+    load_dotenv(ENV_FILE)
+else:
+    load_dotenv()
 
 from utils.document_parsing import parse_docx_to_blocks, extract_text_from_pdf
 
@@ -22,8 +26,13 @@ app = FastAPI()
 # ============================================
 # ChromaDB 클라이언트 초기화
 # ============================================
-CHROMA_HOST = os.getenv('CHROMA_HOST', 'localhost')
-CHROMA_PORT = int(os.getenv('CHROMA_PORT', 8001))
+CHROMA_HOST = os.getenv("LAW_CHROMA_HOST", os.getenv("CHROMA_HOST", "chroma_law"))
+CHROMA_PORT = int(os.getenv("LAW_CHROMA_PORT", os.getenv("CHROMA_PORT", "8001")))
+
+SPRING_CALLBACK_ENABLED = os.getenv("SPRING_CALLBACK_ENABLED", "false").lower() == "true"
+SPRING_PPT_SAVE_URL = os.getenv("SPRING_PPT_SAVE_URL", "")
+SPRING_SCRIPT_SAVE_URL = os.getenv("SPRING_SCRIPT_SAVE_URL", "")
+SPRING_CALLBACK_TIMEOUT = int(os.getenv("SPRING_CALLBACK_TIMEOUT_SEC", "10"))
 
 chroma_client = chromadb.HttpClient(
     host=CHROMA_HOST,
@@ -255,7 +264,7 @@ def api_run_step2(req: Step2Request):
 # Step 3: PPT 생성 (전체 워크플로우)
 # ============================================
 @app.post("/api/analyze/step3")
-async def api_run_step4(
+async def api_run_step3(
     file: UploadFile = File(...),
     notice_id: int = Form(None),
     token: str = Form(None)
@@ -332,20 +341,20 @@ async def api_run_step4(
         }
         
         # Spring Boot 저장 (선택)
-        if notice_id and token:
+        if SPRING_CALLBACK_ENABLED and SPRING_PPT_SAVE_URL and notice_id and token:
             try:
                 spring_response = requests.post(
-                    "http://localhost:8080/api/ppt/save",
+                    SPRING_PPT_SAVE_URL,
                     json={
                         "noticeId": notice_id,
                         "deckTitle": result["deck_title"],
                         "pptxPath": pptx_path,
                     },
                     headers={"Authorization": f"Bearer {token}"},
-                    timeout=10
+                    timeout=SPRING_CALLBACK_TIMEOUT
                 )
                 result["db_saved"] = spring_response.status_code == 200
-            except:
+            except Exception:
                 result["db_saved"] = False
         
         return JSONResponse({"status": "success", "data": result})
@@ -368,8 +377,8 @@ async def api_run_step4(
 @app.post("/api/analyze/step4")
 async def api_run_step4(
     file: UploadFile = File(...),
-    notice_id: int = None,
-    token: str = None
+    notice_id: int = Form(None),
+    token: str = Form(None)
 ):
     """
     Step 4: PPT 스크립트 생성 및 DB 저장
@@ -388,9 +397,8 @@ async def api_run_step4(
         
         if result:
             # Spring Boot로 저장 요청
-            if notice_id and token:
+            if SPRING_CALLBACK_ENABLED and SPRING_SCRIPT_SAVE_URL and notice_id and token:
                 try:
-                    spring_url = "http://localhost:8080/api/scripts/save"
                     headers = {"Authorization": f"Bearer {token}"}
                     payload = {
                         "noticeId": notice_id,
@@ -399,10 +407,10 @@ async def api_run_step4(
                     }
                     
                     spring_response = requests.post(
-                        spring_url,
+                        SPRING_SCRIPT_SAVE_URL,
                         json=payload,
                         headers=headers,
-                        timeout=10
+                        timeout=SPRING_CALLBACK_TIMEOUT
                     )
                     
                     if spring_response.status_code == 200:

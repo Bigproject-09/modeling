@@ -26,9 +26,8 @@ except ImportError:
 # =========================================================
 # ChromaDB (Strategy / RFP search)
 # =========================================================
-CHROMA_HOST = os.getenv("CHROMA_HOST", "127.0.0.1")
-# RFP search(전략) 기본 포트: 8002
-CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8002"))
+STRATEGY_CHROMA_HOST = os.getenv("STRATEGY_CHROMA_HOST", os.getenv("CHROMA_HOST", "chroma_strategy"))
+STRATEGY_CHROMA_PORT = int(os.getenv("STRATEGY_CHROMA_PORT", os.getenv("CHROMA_PORT", "8002")))
 COLLECTION_NAME = os.getenv("CHROMA_COLLECTION", "strategy_chunks_norm")
 EMBED_MODEL_NAME = os.getenv("CHROMA_EMBED_MODEL_NAME", "intfloat/multilingual-e5-base")
 CHROMA_DIR_HINT = os.getenv("CHROMA_DB_DIR", r"C:\chroma_strategy")
@@ -42,14 +41,20 @@ def search_two_tracks(
     exclude_same_ministry_in_b: bool = True,
     score_threshold: float = 0.0,
 ) -> Dict[str, List[Dict[str, Any]]]:
-    print(f"[*] ChromaDB server: {CHROMA_HOST}:{CHROMA_PORT} (collection={COLLECTION_NAME})")
+    print(
+        f"[*] ChromaDB server: {STRATEGY_CHROMA_HOST}:{STRATEGY_CHROMA_PORT} "
+        f"(collection={COLLECTION_NAME})"
+    )
 
     try:
-        client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
+        client = chromadb.HttpClient(host=STRATEGY_CHROMA_HOST, port=STRATEGY_CHROMA_PORT)
         collection = client.get_collection(name=COLLECTION_NAME)
     except Exception as e:
         print(f"[Error] ChromaDB connect failed: {e}")
-        print(f"[Hint] Run: chroma run --host {CHROMA_HOST} --port {CHROMA_PORT} --path {CHROMA_DIR_HINT}")
+        print(
+            f"[Hint] Run: chroma run --host {STRATEGY_CHROMA_HOST} "
+            f"--port {STRATEGY_CHROMA_PORT} --path {CHROMA_DIR_HINT}"
+        )
         return {"track_a": [], "track_b": []}
 
     print(f"[*] Embed model: {EMBED_MODEL_NAME}")
@@ -124,4 +129,3 @@ def _pack_results(raw: dict, threshold: float = 0.0) -> List[Dict[str, Any]]:
         )
 
     return packed
-
