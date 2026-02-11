@@ -13,7 +13,6 @@ from .llm_utils import generate_content_with_retry, get_gemini_client
 # Prompt
 # -----------------------------
 def _build_prompt() -> str:
-    # "섹션별 호출" 전제: 한 섹션 텍스트만 주고 그 섹션에 해당하는 슬라이드만 만들도록 강제
     return """
 역할: 너는 국가 R&D 선정평가 발표자료(PPT)를 작성하는 실무 PM/총괄기획자다.
 
@@ -37,6 +36,8 @@ def _build_prompt() -> str:
 출력 포맷:
 
 DECK_TITLE: <발표자료 전체 제목 1줄>
+
+DECK_TITLE은 섹션과 무관하게 항상 동일한 전체 과제명 형태로 1줄로 작성한다(원문에 없으면 '(과제명 미기재)'). 
 
 SLIDE
 SECTION: <섹션명>
@@ -68,138 +69,21 @@ ENDSLIDE
 - CHAPTER / PART / SECTION 같은 구분용 단독 슬라이드 생성 금지
 - 표지 전용 슬라이드 생성 금지
 - 사진 / 실사 / 캐릭터 / 3D / AI그림 금지
+- (중요) IMAGE_NEEDED는 항상 false. 이미지 파일 생성 지시 금지. (텍스트 없는 아이콘/도형은 PPT에서 수동 삽입 가능)
 - 허용: 도형 기반 인포그래픽, 차트, 표
 
 --------------------------------
 
 시각요소 규칙:
-- 목차 / 표지 / Q&A 제외 모든 슬라이드는 반드시 아래 중 최소 1개 포함:
-  (1) TABLE_MD
-  (2) DIAGRAM_SPEC_KO
-  (3) CHART_SPEC_KO
+- 시각요소(TABLE_MD / DIAGRAM_SPEC_KO / CHART_SPEC_KO)는 선택 사항이다. 없어도 된다.
+- 넣더라도 '이미지 생성'이 아니라, 발표자가 직접 도형/표를 그릴 수 있을 만큼의 텍스트 지시서만 작성한다.
 
---------------------------------
+추가 제약(최우선):
+- 출력의 모든 문장/표현은 한국어로 작성한다.
+- 영어 문장/영어 소제목/영어 불릿 금지.
+- 단, 고유명사/약어(API, GPU 등)만 예외적으로 허용.
+- 가능한 한 '한글 용어(괄호에 약어)' 형태로 쓴다. 예: 그래픽처리장치(GPU)
 
-슬라이드 구성 규칙:
-
-각 섹션은 충분히 설명 가능한 수준까지 슬라이드를 분리한다.
-
-최소 슬라이드 수 규칙:
-- 연구 내용: 최소 4장 이상
-- 추진 계획: 최소 3장 이상
-
-여러 주제가 나오면 반드시 슬라이드를 분리한다.
-한 장에 과도하게 요약하지 않는다.
-
---------------------------------
-
-[연구 내용 섹션 전용 규칙]
-
-연구 내용 섹션에서는 반드시 다음 유형의 슬라이드를 각각 별도의 슬라이드로 포함한다:
-
-1. 전체 시스템 구성도
-2. 주요 모듈 설명
-3. 데이터 흐름 또는 처리 과정
-4. 핵심 기술 요소 설명
-
-전체 시스템 구성도는 반드시 포함한다.
-DIAGRAM_SPEC_KO는 반드시 작성한다.
-
-구성도 작성 규칙:
-- 최소 8개 이상의 구성요소 포함
-- 최소 2계층 이상 구조
-- 데이터 흐름과 시스템 구성요소를 함께 표현
-
-구성 요소 확장 규칙:
-원문에 기술 요소가 충분히 구체적이지 않더라도,
-일반적인 시스템 구조 수준에서 아래 계층은 구성요소로 확장할 수 있다:
-
-- 데이터 수집
-- 저장소
-- 처리 또는 모델
-- API 또는 서비스 계층
-- 시각화 또는 플랫폼
-
-단,
-특정 알고리즘명, 성능 수치, 존재하지 않는 기술은 임의로 생성하지 않는다.
-
-DIAGRAM_SPEC_KO 작성 방식:
-- 각 블록 이름
-- 블록 역할
-- 연결 관계
-- 데이터 흐름 방향
-
---------------------------------
-
-[추진 계획 섹션 규칙]
-
-추진 계획 섹션에서는 반드시 다음 슬라이드를 포함한다:
-
-1. 조직도(수행체계)
-2. 추진 일정 또는 단계
-3. 역할 분담 또는 업무 체계
-
-조직도 작성 방식:
-
-구조:
-최상단: 총괄기관 또는 총괄연구책임자
-
-그 아래:
-참여기관 박스들을 가로로 배치
-
-각 박스에는 반드시 포함:
-- 기관명
-- 담당 기술 또는 역할
-- 연구 인원 또는 담당 범위(있으면)
-
-DIAGRAM_SPEC_KO 작성 규칙:
-- 상단 1개 박스
-- 하단 최소 3개 기관 박스
-- 상하 연결선 포함
-- 각 기관 역할 한 줄 설명 포함
-
---------------------------------
-
-작성 원칙:
-- 추측 금지
-- 원문 기반 재구성만 허용
-- 표현은 간결하고 실제 발표자료 스타일로 작성
-- 설명은 발표자가 읽고 바로 설명할 수 있는 수준으로 작성
-- "수립", "제시", "기술", "정의" 같은 메타 설명 문장은 최소화하고 실제 내용 중심으로 작성
-
-슬라이드 수 규칙:
-
-서로 다른 기술이나 모델은 반드시 별도의 슬라이드로 작성한다.
-연구 내용 섹션은 최소 6장의 슬라이드로 구성한다.
-
-발표자료 전체 슬라이드 수는 최소 20장 이상이 되도록 작성한다.
-
-다음 섹션은 반드시 여러 장으로 나눈다:
-
-기관 소개: 최소 3장
-- 조직 및 역할
-- 핵심역량
-- 인프라 및 실적
-
-사업 개요: 최소 2장
-- 과제 개요
-- 개발 대상 기술
-
-연구 목표: 최소 2장
-- 최종 목표
-- 단계별 목표 또는 KPI
-
-연구 내용: 최소 5장
-- 전체 시스템 구조
-- 핵심 모델 또는 기술 1
-- 핵심 모델 또는 기술 2
-- 데이터 흐름 또는 처리 과정
-- 통합 플랫폼 또는 서비스 구조
-
-추진 계획: 최소 3장
-- 조직도
-- 일정 또는 단계
-- 역할 분담 또는 관리 체계
 """.strip()
 
 
@@ -293,38 +177,14 @@ def _parse_bool(s: str) -> bool:
     return (s or "").strip().lower() in {"true", "1", "yes", "y"}
 
 
-def _fallback_min_slide(sec_title: str, order: int, deck_title: str) -> Dict[str, Any]:
-    # 섹션 드랍 방지용 최소 슬라이드 1장
-    return {
-        "section": sec_title,
-        "deck_title": deck_title or "발표자료",
-        "slides": [
-            {
-                "order": order,
-                "section": sec_title,
-                "slide_title": sec_title,
-                "key_message": "",
-                "bullets": ["(미기재)"],
-                "evidence": [{"type": "미기재", "text": "미기재"}],
-                "image_needed": False,
-                "image_type": "none",
-                "image_brief_ko": "",
-                "TABLE_MD": "",
-                "DIAGRAM_SPEC_KO": "",
-                "CHART_SPEC_KO": "",
-            }
-        ],
-    }
-
-
 def _parse_slides_from_text(raw: str, *, default_section: str, start_order: int) -> List[Dict[str, Any]]:
     slides: List[Dict[str, Any]] = []
     order = start_order
 
     for block in _iter_slide_blocks(raw):
-        section = _grab_field(block, "SECTION") or default_section
-        title = _grab_field(block, "TITLE")
-        key_message = _grab_field(block, "KEY_MESSAGE")
+        section = (_grab_field(block, "SECTION") or default_section).strip()
+        title = _grab_field(block, "TITLE").strip()
+        key_message = _grab_field(block, "KEY_MESSAGE").strip()
 
         image_needed = _parse_bool(_grab_field(block, "IMAGE_NEEDED"))
         image_type = (_grab_field(block, "IMAGE_TYPE") or "none").strip().lower()
@@ -332,6 +192,12 @@ def _parse_slides_from_text(raw: str, *, default_section: str, start_order: int)
             image_type = "none"
 
         image_brief_ko = _grab_multiline_field(block, "IMAGE_BRIEF_KO")
+
+        # ✅ 강제: 이미지 생성 사용 안 함 (사용자 요구)
+        image_needed = False
+        image_type = "none"
+        image_brief_ko = ""
+
         table_md = _grab_multiline_field(block, "TABLE_MD")
         diagram_spec_ko = _grab_multiline_field(block, "DIAGRAM_SPEC_KO")
         chart_spec_ko = _grab_multiline_field(block, "CHART_SPEC_KO")
@@ -339,6 +205,7 @@ def _parse_slides_from_text(raw: str, *, default_section: str, start_order: int)
         bullets = _parse_bullets(block)
         evidence = _parse_evidence(block)
 
+        # 챕터/파트/섹션 단독 슬라이드 제거
         upper_title = (title or "").upper()
         upper_section = (section or "").upper()
         if any(x in upper_title for x in ["CHAPTER", "PART", "SECTION"]) or any(
@@ -354,9 +221,9 @@ def _parse_slides_from_text(raw: str, *, default_section: str, start_order: int)
                 "key_message": key_message,
                 "bullets": bullets,
                 "evidence": evidence,
-                "image_needed": bool(image_needed),
-                "image_type": image_type,
-                "image_brief_ko": image_brief_ko,
+                "image_needed": False,
+                "image_type": "none",
+                "image_brief_ko": "",
                 "TABLE_MD": table_md,
                 "DIAGRAM_SPEC_KO": diagram_spec_ko,
                 "CHART_SPEC_KO": chart_spec_ko,
@@ -368,20 +235,44 @@ def _parse_slides_from_text(raw: str, *, default_section: str, start_order: int)
 
 
 # -----------------------------
+# Repair (keep only cleaning; no extra image instructions)
+# -----------------------------
+def _repair_slides(slides: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    banned = ["본 슬라이드", "추후 보완", "제공되지 않아", "원문 근거 부족"]
+    for s in slides:
+        s["image_needed"] = False
+        s["image_type"] = "none"
+        s["image_brief_ko"] = ""
+
+        km = str(s.get("key_message") or "")
+        if any(b in km for b in banned):
+            s["key_message"] = ""
+
+        bullets = s.get("bullets") or []
+        nb = []
+        if isinstance(bullets, list):
+            for b in bullets:
+                bt = str(b or "").strip()
+                if not bt:
+                    continue
+                if any(x in bt for x in banned):
+                    continue
+                nb.append(bt)
+        s["bullets"] = nb
+
+        # "미기재" 도식 강제는 하지 않음(후처리에서 이미지 제거/도식 그리기)
+        for k in ["TABLE_MD", "DIAGRAM_SPEC_KO", "CHART_SPEC_KO"]:
+            v = str(s.get(k) or "").strip()
+            if "미기재" in v or "원문" in v:
+                s[k] = ""
+
+    return slides
+
+
+# -----------------------------
 # Node
 # -----------------------------
 def section_deck_generation_node(state: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    섹션별 Gemini 호출 → section_decks 생성
-
-    입력:
-      - state["sections"] = [{"title":..., "text":...}, ...] (권장)
-      - 없으면 extracted_text 전체를 단일 섹션으로 처리(최소 동작)
-
-    출력:
-      - state["deck_title"]
-      - state["section_decks"]
-    """
     sections = state.get("sections")
     extracted_text = (state.get("extracted_text") or "").strip()
 
@@ -398,35 +289,61 @@ def section_deck_generation_node(state: Dict[str, Any]) -> Dict[str, Any]:
     order_cursor = 1
 
     for s in sections:
-        sec_title = (s.get("title") or "").strip()
+        sec_title = re.sub(r"\s+", " ", (s.get("title") or "")).strip()  # ✅ 핵심: strip
         sec_text = (s.get("text") or "").strip()
 
-        # ✅ 섹션명 공백 정규화: '기대  효과' -> '기대 효과'
-        sec_title = re.sub(r"\s+", " ", sec_title).strip()
+        # 표준화
+        alias = {
+            "연구내용": "연구 내용",
+            "기관소개": "기관 소개",
+            "추진계획": "추진 계획",
+            "기대효과": "기대 효과",
+            "활용계획": "활용 계획",
+        }
+        sec_title = alias.get(sec_title, sec_title).strip()  # ✅ 핵심: strip
 
         if not sec_title:
             continue
 
-        # ✅ Q&A는 LLM 호출하지 않음
+        # Q&A는 여기서 만들지 않음(merge에서 강제 추가)
         if sec_title.upper() in {"Q&A", "QNA", "QA"} or sec_title in {"질의응답", "질문", "응답"}:
             continue
 
-        # ✅ 텍스트가 비어/짧아도 섹션을 드랍하지 않음
-        if not sec_text:
-            sec_text = "(원문이 비어있음: 미기재)"
-        elif len(sec_text) < 80:
-            sec_text = sec_text + "\n(세부 근거/수치는 원문에 미기재)"
+        # 너무 짧아도 그냥 넘기지 말고 그대로 보냄(“미기재” 덧붙이지 않음)
+        if len(sec_text) > int(state.get("max_section_chars") or 6000):
+            sec_text = sec_text[: int(state.get("max_section_chars") or 6000)] + "\n...(이하 생략)"
+
+        common_rules = """
+        [공통 강제 규칙]
+        - 모든 출력은 한국어. 영어 문장 금지(고유명사/약어만 예외).
+        - 메타 문장(본 슬라이드/추후 보완/제공되지 않아) 절대 금지. 부족하면 '미기재'로만 표기.
+        - 목차/표지/챕터/파트 같은 구분용 단독 슬라이드 생성 금지.
+        - 시각요소(TABLE/도식/차트)는 선택 사항이다.
+        - 이미지 생성(IMAGE_NEEDED)은 항상 false.
+        """.strip()
+
+
+        # 섹션별 추가 규칙(필요 최소만)
+        if sec_title == "기관 소개":
+            section_rules = """
+[추가 규칙]
+- '기관 소개' 섹션은 슬라이드 1장만 생성한다.
+- TITLE은 '기관 소개 및 수행역량'
+""".strip()
+        else:
+            section_rules = ""
+
+        prompt_for_section = f"{prompt}\n\n{common_rules}\n\n{section_rules}".strip()
+        input_text = f"[섹션: {sec_title}]\n{sec_text}"
 
         print("[DEBUG][gemini] section:", repr(sec_title), "len:", len(sec_text))
-
-        input_text = f"[섹션: {sec_title}]\n{sec_text}"
 
         resp = generate_content_with_retry(
             client,
             model=state.get("gemini_model") or "gemini-2.5-flash",
-            contents=[prompt, input_text],
+            contents=[prompt_for_section, input_text],
             config=types.GenerateContentConfig(
-                max_output_tokens=int(state.get("gemini_max_output_tokens") or 4096),
+                max_output_tokens=int(state.get("gemini_max_output_tokens") or 8192),
                 temperature=float(state.get("gemini_temperature") or 0.4),
             ),
             max_retries=int(state.get("gemini_max_retries") or 5),
@@ -435,24 +352,20 @@ def section_deck_generation_node(state: Dict[str, Any]) -> Dict[str, Any]:
         raw = (getattr(resp, "text", None) or "").strip()
         print("[DEBUG][gemini] raw_len:", len(raw), "section:", repr(sec_title))
 
-        # ✅ 응답이 비어도 섹션 드랍 금지 (최소 슬라이드 1장)
         if not raw:
-            section_decks[sec_title] = _fallback_min_slide(sec_title, order_cursor, deck_title)
-            order_cursor += 1
+            # ✅ fallback 슬라이드 만들지 않음(merge에서 목차/감사합니다는 강제)
             continue
 
         if not deck_title:
-            deck_title = _parse_deck_title(raw)
+            deck_title = _parse_deck_title(raw).strip()
 
         slides = _parse_slides_from_text(raw, default_section=sec_title, start_order=order_cursor)
+        slides = _repair_slides(slides)
 
-        # ✅ 파싱 실패해도 섹션 드랍 금지 (최소 슬라이드 1장)
         if not slides:
-            section_decks[sec_title] = _fallback_min_slide(sec_title, order_cursor, deck_title)
-            order_cursor += 1
             continue
 
-        order_cursor = max(order_cursor, max(sl["order"] for sl in slides) + 1)
+        order_cursor = max(order_cursor, max(sl.get("order", 0) for sl in slides) + 1)
 
         section_decks[sec_title] = {
             "section": sec_title,
@@ -463,7 +376,7 @@ def section_deck_generation_node(state: Dict[str, Any]) -> Dict[str, Any]:
     if not section_decks:
         raise RuntimeError("Gemini가 섹션별 슬라이드를 생성하지 못했습니다. (section_decks=empty)")
 
-    state["deck_title"] = deck_title or "발표자료"
+    state["deck_title"] = deck_title or "(과제명 미기재)"
     state["section_decks"] = section_decks
 
     print("[DEBUG] deck_title:", state["deck_title"])

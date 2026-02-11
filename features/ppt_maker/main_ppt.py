@@ -28,6 +28,7 @@ from features.ppt_maker.nodes_code.section_split_node import section_split_node
 from features.ppt_maker.nodes_code.section_deck_generation_node import section_deck_generation_node
 from features.ppt_maker.nodes_code.merge_deck_node import merge_deck_node
 from features.ppt_maker.nodes_code.gamma_generation_node import gamma_generation_node
+from features.ppt_maker.nodes_code.postprocess_diagrams import postprocess_diagrams_node
 
 
 load_dotenv(override=True)
@@ -199,9 +200,9 @@ def build_graph(*, skip_to_gamma: bool = False):
 
     # 노드 등록 (공통)
     workflow.add_node("make_pptx", gamma_generation_node)
+    workflow.add_node("postprocess", postprocess_diagrams_node)
 
     if skip_to_gamma:
-        # ✅ START 엣지를 명시 (langgraph 버전에 따라 set_entry_point만으로는 부족할 때가 있음)
         workflow.add_edge(START, "make_pptx")
         workflow.add_edge("make_pptx", "postprocess")
         workflow.add_edge("postprocess", END)
@@ -213,13 +214,14 @@ def build_graph(*, skip_to_gamma: bool = False):
     workflow.add_node("make_sections", section_deck_generation_node)
     workflow.add_node("merge_deck", merge_deck_node)
 
-    # ✅ START -> extract_text
     workflow.add_edge(START, "extract_text")
     workflow.add_edge("extract_text", "split_sections")
     workflow.add_edge("split_sections", "make_sections")
     workflow.add_edge("make_sections", "merge_deck")
     workflow.add_edge("merge_deck", "make_pptx")
-    workflow.add_edge("make_pptx", END)
+    workflow.add_edge("make_pptx", "postprocess")
+    workflow.add_edge("postprocess", END)
+
 
     return workflow.compile()
 
@@ -307,7 +309,7 @@ def main():
     parser = argparse.ArgumentParser(description="PPT 자동 생성 (Extract -> Split -> Gemini(섹션별) -> Merge -> Gamma)")
     parser.add_argument("--source", default="", help="입력 파일 경로(pdf/docx/json). 비우면 data/ppt_input에서 자동 선택")
     parser.add_argument("--outdir", default="", help="출력 폴더 (default: ./output)")
-    parser.add_argument("--outname", default="", help="출력 pptx 파일명 (default: gamma_<id>.pptx)")
+    parser.add_argument("--outname", default="", help="출력 pptx 파일명 (default: result_<id>.pptx)")
     parser.add_argument("--gemini_model", default="", help="Gemini 모델명 (default: deck_generation_node 내부 기본값)")
     parser.add_argument("--gamma_theme", default="", help="Gamma themeName (선택)")
     parser.add_argument("--gamma_timeout", type=int, default=0, help="Gamma polling timeout seconds (선택)")
