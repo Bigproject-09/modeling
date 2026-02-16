@@ -10,7 +10,7 @@ uvicorn
 pymysql
 python-multipart
 requests
-chromadb
+chromadb==0.5.5
 sentence-transformers
 torch
 numpy
