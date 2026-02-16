@@ -1,160 +1,424 @@
-"""규칙 기반 섹션 분할 노드.
-
-목표
-- extracted_text를 '발표 순서' 기준 섹션별로 분할한다.
-- LLM을 이용하지 않는다(재현성/호출수/안정성).
-
-출력(state 계약)
-- section_chunks: {섹션명: 텍스트}
-- sections: [{"title": 섹션명, "text": 텍스트}, ...]  ✅ 이후 노드가 이 형태를 사용
-"""
+"""Rule-based section splitter with optional Gemini reclassification for ambiguous blocks."""
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, NamedTuple
+from typing import Any, Dict, List, Optional, Tuple
+import json
+import os
 import re
 
-# 발표 순서(고정) + 섹션 헤딩 후보(규칙 기반)
-# ✅ 섹션명은 merge_deck_node의 SECTION_ORDER/AGENDA_ITEMS와 반드시 동일해야 함
-# ✅ 사용자가 요구한 발표 순서로 고정: 기관소개 → 사업개요 → 연구목표 → 연구필요성 → 연구내용 → 추진계획 → 기대효과 → 활용계획
-SECTION_RULES: Dict[str, List[str]] = {
-    "기관 소개": ["기관소개", "기관 소개", "수행기관", "수행 기관", "기관 개요", "기관 현황"],
-    "사업 개요": [
-        "사업개요", "사업 개요", "과제 개요", "연구개요", "연구 개요",
-        "연구개발의 개요", "연구개발 개요", "사업 목적"
-    ],
-    "연구 목표": ["연구 목표", "최종 목표", "단계별 목표", "정량 목표", "정성 목표"],
-    "연구 필요성": ["연구 필요성", "추진 배경", "국내외 현황", "국외 현황", "국내 현황"],
-    "연구 내용": [
-    "연구 내용",
-    "연구개발 내용",
-    "연구개발과제의 내용",
-    "연구개발과제 내용",
-    "연구 수행 내용",
-    "세부 내용",
-    "세부과제",
-    "세부 과제",
-    "핵심기술",
-    "핵심 기술",
-    "개발 내용",
-    "기술 개발 내용"
-],
 
-    "추진 계획": ["추진 계획", "수행 계획", "연구 추진 계획", "추진전략", "추진 전략", "추진 체계", "추진체계", "일정", "로드맵"],
-    # 기존 문서/LLM이 '기대 성과'로 쓰더라도 결과 섹션명은 '기대 효과'로 통일
-    "기대 효과": ["기대 효과", "기대효과", "기대 성과", "기대성과", "파급효과", "파급 효과", "성과 확산"],
-    "활용 계획": ["활용 계획", "활용방안", "활용 방안", "사업화 계획", "활용 전략", "확산 계획", "기술이전", "기술 이전"],
-    "Q&A": ["Q&A", "질의응답", "질의 응답"],
+SECTION_ORDER = [
+    "기관 소개",
+    "연구 개요",
+    "연구 필요성",
+    "연구 목표",
+    "연구 내용",
+    "추진 계획",
+    "활용방안 및 기대효과",
+    "사업화 전략 및 계획",
+    "Q&A",
+]
+
+_HEADING_NUM_RE = re.compile(r"^\s*(\d+)(?:[.\-](\d+))?[.)]?\s*(.+?)\s*$")
+_DOT_LEADER_RE = re.compile(r"·\s*·")
+_TOC_LINE_RE = re.compile(r"^\s*\d+(?:-\d+)?\.\s*.+·")
+
+_NOISE_HINTS = [
+    "연구개발계획서(본문1)",
+    "본 서식은 연구개발계획서 본문1",
+    "범부처 통합연구지원시스템",
+    "제출 시 불필요하며",
+    "목 차",
+    "< 본문 1 >",
+]
+
+_KEYWORDS: Dict[str, List[str]] = {
+    "연구 개요": ["연구개발의개요", "개요", "과제개요", "대상기술", "연구범위"],
+    "연구 필요성": ["연구개발의필요성", "국내외현황", "중요성", "선행연구", "중복성", "차별성", "필요성", "배경"],
+    "연구 목표": ["연구목표", "최종목표", "성과지표", "정량목표", "목표"],
+    "연구 내용": ["연구개발과제의내용", "연구내용", "핵심기술", "데이터", "모델", "아키텍처", "구성", "수행일정", "주요결과물"],
+    "추진 계획": ["추진전략", "추진방법", "추진체계", "수행체계", "국제공동", "마일스톤", "로드맵", "일정", "추진계획"],
+    "활용방안 및 기대효과": ["활용방안", "활용계획", "기대효과", "파급효과", "정책효과", "경제효과", "사회적효과", "성과활용"],
+    "사업화 전략 및 계획": ["사업화전략", "사업화계획", "시장동향", "지식재산권", "표준화", "인증기준", "사업화", "안전조치", "보안조치", "이행계획", "보안", "안전"],
 }
 
-SECTION_ORDER = list(SECTION_RULES.keys())
+
+def _normalize(s: Any) -> str:
+    t = str(s or "").replace("\u00a0", " ")
+    return re.sub(r"\s+", " ", t).strip()
 
 
-def _normalize(s: str) -> str:
-    s = (s or "").strip()
-    s = re.sub(r"\s+", "", s)
-    # 특수문자 제거(목차 기호/점선 등)
-    s = re.sub(r"[^0-9A-Za-z가-힣]", "", s)
-    return s
+def _norm_key(s: Any) -> str:
+    return re.sub(r"[^0-9a-z가-힣]", "", _normalize(s).lower())
 
-def _strip_heading_prefix(s: str) -> str:
-    # 예: "05 연구 내용", "5. 연구내용", "Ⅰ. 연구내용", "01 기관 소개" 같은 접두 제거
-    s = (s or "").strip()
-    s = re.sub(r"^[\(\[]?\s*(?:\d{1,2}|[IVXⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+)\s*[\)\].-]?\s*", "", s)
-    return s
 
-def _looks_like_heading(line: str) -> bool:
-    # 너무 긴 문장은 헤딩일 확률 낮음
-    raw = (line or "").strip()
-    if not raw:
-        return False
-    if len(raw) > 40:
-        return False
-    # 문장형(마침표/다수 조사 포함) 줄은 헤딩 확률 낮음
-    if raw.count("다") >= 2 or raw.count("니다") >= 1:
-        return False
-    # 콜론이 있으면 설명문일 가능성
-    if ":" in raw:
-        return False
-    return True
+def _parse_heading(line: str) -> Optional[Tuple[int, int, str]]:
+    m = _HEADING_NUM_RE.match(_normalize(line))
+    if not m:
+        return None
+    main = int(m.group(1))
+    sub = int(m.group(2)) if m.group(2) else 0
+    title = _normalize(m.group(3))
+    if not (2 <= len(title) <= 120):
+        return None
+    return main, sub, title
+
+
+def _section_from_heading(main: int, sub: int, title: str) -> Optional[str]:
+    tk = _norm_key(title)
+
+    if main == 1:
+        if sub == 1:
+            return "연구 개요"
+        return "연구 필요성"
+
+    if main == 2:
+        if sub in {1, 2}:
+            return "연구 목표"
+        if sub == 3:
+            return "연구 내용"
+        if sub == 4:
+            return "추진 계획"
+        return "연구 목표" if ("목표" in tk) else "연구 내용"
+
+    if main == 3:
+        return "추진 계획"
+
+    if main == 4:
+        return "활용방안 및 기대효과"
+
+    if main == 5:
+        return "사업화 전략 및 계획"
+
+    if main == 6:
+        return "사업화 전략 및 계획"
+
+    return None
+
+
+def _heading_allowed_sections(main: int, sub: int, heading_sec: str) -> List[str]:
+    if main == 1:
+        if sub == 1:
+            return ["연구 개요"]
+        return ["연구 필요성"]
+    if main == 2:
+        if sub in {1, 2}:
+            return ["연구 목표"]
+        if sub == 3:
+            return ["연구 내용"]
+        if sub == 4:
+            return ["추진 계획"]
+        return ["연구 목표", "연구 내용"]
+    if main == 3:
+        return ["추진 계획"]
+    if main == 4:
+        return ["활용방안 및 기대효과"]
+    if main == 5:
+        return ["사업화 전략 및 계획"]
+    if main == 6:
+        return ["사업화 전략 및 계획"]
+    return [heading_sec] if heading_sec else []
+
+
+def _find_section_headers(lines: List[str]) -> List[Dict[str, Any]]:
+    headers: List[Dict[str, Any]] = []
+    for i, raw in enumerate(lines):
+        parsed = _parse_heading(raw)
+        if not parsed:
+            continue
+        main, sub, title = parsed
+        sec = _section_from_heading(main, sub, title)
+        if not sec:
+            continue
+        headers.append({"line_idx": i, "section": sec, "main": main, "sub": sub, "title": title})
+    return headers
+
+
+def _is_noise_line(line: str) -> bool:
+    t = _normalize(line)
+    if not t:
+        return True
+    if any(h in t for h in _NOISE_HINTS):
+        return True
+    if _DOT_LEADER_RE.search(t):
+        return True
+    if _TOC_LINE_RE.match(t):
+        return True
+    if t in {"< 본문 1 >", "<본문1>", "목차", "목 차"}:
+        return True
+    return False
+
+
+def _clean_chunk(text: str) -> str:
+    lines = text.splitlines()
+    out: List[str] = []
+    for i, raw in enumerate(lines):
+        if i > 0 and _is_noise_line(raw):
+            continue
+        out.append(raw)
+    return "\n".join([x for x in out if _normalize(x)]).strip()
+
+
+def _score_sections(text: str) -> Dict[str, float]:
+    tk = _norm_key(text)
+    scores: Dict[str, float] = {sec: 0.0 for sec in _KEYWORDS}
+    for sec, kws in _KEYWORDS.items():
+        for kw in kws:
+            k = _norm_key(kw)
+            if not k:
+                continue
+            cnt = tk.count(k)
+            if cnt:
+                scores[sec] += cnt
+                if k in tk[:220]:
+                    scores[sec] += 0.7
+    return scores
+
+
+def _best_two(scores: Dict[str, float]) -> Tuple[str, float, str, float]:
+    items = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    if not items:
+        return "", 0.0, "", 0.0
+    if len(items) == 1:
+        return items[0][0], items[0][1], "", 0.0
+    return items[0][0], items[0][1], items[1][0], items[1][1]
+
+
+def _is_ambiguous(text: str, heading_section: str) -> Tuple[bool, str, str]:
+    scores = _score_sections(text)
+    best, best_s, second, second_s = _best_two(scores)
+    gap = best_s - second_s
+
+    if best_s < 1.0:
+        return True, heading_section, "low_signal"
+    if gap < 1.8:
+        return True, heading_section, "small_gap"
+
+    hk = _norm_key(heading_section)
+    conf = 0.0
+    for sec, val in scores.items():
+        if _norm_key(sec) == hk:
+            conf = val
+            break
+
+    if best and best != heading_section and (best_s - conf) >= 2.5 and conf <= 1.0:
+        return False, best, "reassign_by_score"
+
+    return False, heading_section, "keep_heading"
+
+
+def _extract_json_block(text: str) -> str:
+    t = (text or "").strip()
+    if not t:
+        return ""
+    i = t.find("{")
+    j = t.rfind("}")
+    if i >= 0 and j > i:
+        return t[i : j + 1]
+    return t
+
+
+def _gemini_reclassify_ambiguous(
+    pending: List[Dict[str, Any]],
+    state: Dict[str, Any],
+) -> Dict[int, str]:
+    if not pending:
+        return {}
+
+    enabled = state.get("enable_gemini_section_split")
+    if enabled is False:
+        return {}
+
+    api_key = os.environ.get("GOOGLE_API_KEY", "").strip()
+    if not api_key:
+        return {}
+
+    try:
+        from google import genai
+    except Exception:
+        print("[WARN][section_split] google.genai not available; skip Gemini reclassify")
+        return {}
+
+    model = str(state.get("gemini_model") or "gemini-2.5-flash").strip()
+    client = genai.Client(api_key=api_key)
+
+    payload = [
+        {
+            "id": int(x.get("id")),
+            "heading_section": str(x.get("heading_section") or ""),
+            "allowed_sections": list(x.get("allowed_sections") or []),
+            "text": str(x.get("text") or "")[:2500],
+        }
+        for x in pending
+    ]
+
+    prompt = (
+        "너는 국가 R&D 제안서 문서 섹션 분류기다.\n"
+        "입력 items의 각 text를 읽고, 해당 item.allowed_sections 중에서만 하나를 고른다.\n"
+        "반드시 JSON만 출력한다. 설명 문장 금지.\n"
+        "출력 스키마:\n"
+        '{"items":[{"id":0,"section":"연구 개요"}]}\n\n'
+        f"입력:\n{json.dumps({'items': payload}, ensure_ascii=False)}"
+    )
+
+    try:
+        resp = client.models.generate_content(model=model, contents=prompt)
+        raw = getattr(resp, "text", "") or ""
+        data = json.loads(_extract_json_block(raw))
+        out: Dict[int, str] = {}
+
+        allow_map = {int(x["id"]): set(x.get("allowed_sections") or []) for x in payload}
+        for row in (data.get("items") or []):
+            try:
+                idx = int(row.get("id"))
+            except Exception:
+                continue
+            sec = _normalize(row.get("section") or "")
+            if sec and sec in allow_map.get(idx, set()):
+                out[idx] = sec
+        if out:
+            print(f"[INFO][section_split] Gemini reclassified: {len(out)}/{len(pending)} using {model}")
+        return out
+    except Exception as e:
+        print(f"[WARN][section_split] Gemini reclassify skipped: {e}")
+        return {}
+
 
 def section_split_node(state: Dict[str, Any]) -> Dict[str, Any]:
     extracted_text = state.get("extracted_text") or ""
-    if not extracted_text.strip():
-        return {"section_chunks": {}, "sections": []}
+    lines = (extracted_text or "").splitlines()
+    headers = _find_section_headers(lines)
 
-    lines = extracted_text.splitlines()
+    section_chunks: Dict[str, str] = {sec: "" for sec in SECTION_ORDER}
+    debug_rows: List[Dict[str, Any]] = []
 
-    # 1) 헤딩 위치 탐색
-    hits: List[Tuple[int, str]] = []
-    for idx, line in enumerate(lines):
-        raw0 = (line or "").strip()
-        if not raw0:
+    if not headers:
+        section_chunks["기관 소개"] = ""
+        section_chunks["연구 개요"] = extracted_text
+        state["section_chunks"] = section_chunks
+        state["sections"] = [{"title": sec, "text": section_chunks[sec]} for sec in SECTION_ORDER]
+        state["section_split_debug"] = [{"mode": "no_headers_fallback"}]
+        return state
+
+    # 헤더 전 노이즈(prelude)는 기본 제외. 유의미 텍스트만 사업개요에 편입.
+    first_idx = int(headers[0]["line_idx"])
+    if first_idx > 0:
+        pre = _clean_chunk("\n".join(lines[:first_idx]))
+        if len(pre) >= 160:
+            section_chunks["연구 개요"] = pre
+
+    section_chunks["기관 소개"] = ""  # 기관 소개는 추후 DB 연동
+
+    pending: List[Dict[str, Any]] = []
+
+    for j, h in enumerate(headers):
+        start_idx = int(h["line_idx"])
+        heading_sec = str(h["section"])
+        main = int(h["main"])
+        sub = int(h["sub"])
+        end_idx = int(headers[j + 1]["line_idx"]) if (j + 1) < len(headers) else len(lines)
+
+        raw_chunk = "\n".join(lines[start_idx:end_idx]).strip()
+        chunk = _clean_chunk(raw_chunk)
+        if not chunk:
             continue
 
-        raw = _strip_heading_prefix(raw0)
-        if not _looks_like_heading(raw0) and not _looks_like_heading(raw):
+        amb, selected_sec, reason = _is_ambiguous(chunk, heading_sec)
+        debug_rows.append(
+            {
+                "line_start": start_idx,
+                "main": main,
+                "sub": sub,
+                "heading_section": heading_sec,
+                "selected_section": selected_sec,
+                "ambiguous": amb,
+                "reason": reason,
+                "length": len(chunk),
+            }
+        )
+
+        if amb:
+            allowed_sections = _heading_allowed_sections(main, sub, heading_sec)
+            if len(chunk) < 180:
+                # 짧은 애매 블록은 헤더 기준으로 유지(LLM 비용/노이즈 방지).
+                target = heading_sec
+                if section_chunks.get(target):
+                    section_chunks[target] += "\n\n" + chunk
+                else:
+                    section_chunks[target] = chunk
+                debug_rows.append(
+                    {
+                        "line_start": start_idx,
+                        "main": main,
+                        "sub": sub,
+                        "heading_section": heading_sec,
+                        "selected_section": target,
+                        "ambiguous": False,
+                        "reason": "short_ambiguous_keep_heading",
+                        "length": len(chunk),
+                    }
+                )
+                continue
+
+            pending.append(
+                {
+                    "id": len(pending),
+                    "heading_section": heading_sec,
+                    "allowed_sections": allowed_sections,
+                    "text": chunk,
+                    "main": main,
+                    "sub": sub,
+                }
+            )
             continue
 
-        norm = _normalize(raw)
+        if section_chunks.get(selected_sec):
+            section_chunks[selected_sec] += "\n\n" + chunk
+        else:
+            section_chunks[selected_sec] = chunk
 
-        nxt0 = (lines[idx + 1].strip() if idx + 1 < len(lines) else "")
-        nxt = _strip_heading_prefix(nxt0)
-        window = f"{raw} {nxt}".strip()
-        window_norm = _normalize(window)
+    gemini_map = _gemini_reclassify_ambiguous(pending, state)
 
-        found_section = None
-        for section, keywords in SECTION_RULES.items():
-            for kw in keywords:
-                if not kw:
-                    continue
-                nkw = _normalize(kw)
-                if not nkw:
-                    continue
+    for p in pending:
+        heading_sec = str(p.get("heading_section") or "")
+        chunk = str(p.get("text") or "")
+        pid = int(p.get("id"))
+        allowed_sections = list(p.get("allowed_sections") or []) or [heading_sec]
 
-                # 공백/특수문자 제거 기준으로만 비교 (오탐 줄이기)
-                if nkw in norm or nkw in window_norm:
-                    # '일정' 같은 흔한 키워드는 헤딩일 때만 인정
-                    if kw in ["일정", "로드맵"] and not _looks_like_heading(raw0):
-                        continue
-                    found_section = section
-                    break
-            if found_section:
-                break
+        if pid in gemini_map:
+            target = gemini_map[pid]
+            reason = "gemini_reclassify"
+            amb = False
+        else:
+            target = heading_sec
+            reason = "ambiguous_fallback"
+            amb = True
 
-        if found_section:
-            hits.append((idx, found_section))
+        if target not in allowed_sections:
+            target = heading_sec
+            reason = "allowed_guard_fallback"
+            amb = True
 
-    # 2) 섹션 시작점 정렬/중복 제거(첫 등장만 사용)
-    hits.sort(key=lambda x: x[0])
-    seen = set()
-    ordered_hits: List[Tuple[int, str]] = []
-    for idx, sec in hits:
-        if sec in seen:
-            continue
-        ordered_hits.append((idx, sec))
-        seen.add(sec)
+        if section_chunks.get(target):
+            section_chunks[target] += "\n\n" + chunk
+        else:
+            section_chunks[target] = chunk
 
-    # 3) 섹션별 chunk 생성
-    section_chunks: Dict[str, str] = {}
-    if ordered_hits:
-        for i, (start_idx, section_name) in enumerate(ordered_hits):
-            end_idx = ordered_hits[i + 1][0] if i + 1 < len(ordered_hits) else len(lines)
-            chunk_text = "\n".join(lines[start_idx:end_idx]).strip()
-            section_chunks[section_name] = chunk_text
-    else:
-        section_chunks["사업 개요"] = extracted_text.strip()
+        debug_rows.append(
+            {
+                "line_start": -1,
+                "main": int(p.get("main") or 0),
+                "sub": int(p.get("sub") or 0),
+                "heading_section": heading_sec,
+                "selected_section": target,
+                "ambiguous": amb,
+                "reason": reason,
+                "length": len(chunk),
+            }
+        )
 
-    # 4) sections(list)
-    section_chunks = {_canon_title(k): v for k, v in section_chunks.items()}
-
-    sections = [{"title": sec, "text": section_chunks[sec]} for sec in SECTION_ORDER if sec in section_chunks]
-    
-    print("[DEBUG][split] section_chunks keys:", list(section_chunks.keys()))
-    print("[DEBUG][split] missing:", [s for s in SECTION_ORDER if s not in section_chunks])
-    
-    return {"section_chunks": section_chunks, "sections": sections}
-
-def _canon_title(t: str) -> str:
-    # 연속 공백 -> 1개, 앞뒤 공백 제거
-    return re.sub(r"\s+", " ", (t or "").strip())
+    state["section_chunks"] = section_chunks
+    state["sections"] = [{"title": sec, "text": section_chunks.get(sec, "")} for sec in SECTION_ORDER]
+    state["section_split_debug"] = debug_rows
+    return state

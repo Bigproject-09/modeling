@@ -38,12 +38,16 @@ class GraphState(TypedDict, total=False):
     # 출력 옵션
     output_dir: str
     output_filename: str
+    render_mode: str
+    template_pptx_path: str
+    template_ppt_path: str
 
     # Gemini 옵션
     gemini_model: str
     gemini_temperature: float
     gemini_max_output_tokens: int
     gemini_max_retries: int
+    gemini_image_model: str
 
     # Gamma 옵션/결과
     gamma_theme: str
@@ -58,6 +62,25 @@ class GraphState(TypedDict, total=False):
 
     # (선택) PPTX 후처리 폰트명
     font_name: str
+    force_rewrite_agenda: bool
+
+    # 내부 제어 옵션
+    save_checkpoint: bool
+    enable_gemini_diagram_images: bool
+    gemini_image_max_count: int
+    gemini_cover_image_only: bool
+    min_slide_count: int
+    postprocess_rewrite_cover: bool
+    postprocess_rewrite_agenda: bool
+    postprocess_style_tables: bool
+    postprocess_trim_ending: bool
+    postprocess_apply_template: bool
+    postprocess_apply_background_image: bool
+    postprocess_background_image_path: str
+    postprocess_background_profile: str
+    postprocess_background_base_dir: str
+    postprocess_background_random_seed: int
+    postprocess_remove_background_image: bool
 
 
 def create_empty_state() -> GraphState:

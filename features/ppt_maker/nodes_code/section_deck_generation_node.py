@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from typing import Any, Dict, List
 
@@ -12,8 +13,23 @@ from .llm_utils import generate_content_with_retry, get_gemini_client
 # -----------------------------
 # Prompt
 # -----------------------------
+FORBIDDEN_ENDINGS = ("다", "니다", "합니다", "됩니다")
+FORMAL_LINE_RE = re.compile(
+    r"(합니다|입니다|됩니다|있습니다|가능합니다|예상됩니다|필요합니다|수행합니다|한다|된다|있다)\s*[.!?]?$"
+)
+
+
+def _contains_formal_line(text: Any) -> bool:
+    t = str(text or "").strip()
+    if not t:
+        return False
+    for line in t.splitlines():
+        if FORMAL_LINE_RE.search(line.strip()):
+            return True
+    return False
+
+
 def _build_prompt() -> str:
-    # "섹션별 호출" 전제: 한 섹션 텍스트만 주고 그 섹션에 해당하는 슬라이드만 만들도록 강제
     return """
 역할: 너는 국가 R&D 선정평가 발표자료(PPT)를 작성하는 실무 PM/총괄기획자다.
 
@@ -37,6 +53,8 @@ def _build_prompt() -> str:
 출력 포맷:
 
 DECK_TITLE: <발표자료 전체 제목 1줄>
+
+DECK_TITLE은 섹션과 무관하게 항상 동일한 전체 과제명 형태로 1줄로 작성한다(원문에 없으면 '(과제명 미기재)'). 
 
 SLIDE
 SECTION: <섹션명>
@@ -68,138 +86,38 @@ ENDSLIDE
 - CHAPTER / PART / SECTION 같은 구분용 단독 슬라이드 생성 금지
 - 표지 전용 슬라이드 생성 금지
 - 사진 / 실사 / 캐릭터 / 3D / AI그림 금지
+- (중요) IMAGE_NEEDED는 항상 false. 이미지 파일 생성 지시 금지. (텍스트 없는 아이콘/도형은 PPT에서 수동 삽입 가능)
 - 허용: 도형 기반 인포그래픽, 차트, 표
 
 --------------------------------
 
 시각요소 규칙:
-- 목차 / 표지 / Q&A 제외 모든 슬라이드는 반드시 아래 중 최소 1개 포함:
-  (1) TABLE_MD
-  (2) DIAGRAM_SPEC_KO
-  (3) CHART_SPEC_KO
+- 시각요소(TABLE_MD / DIAGRAM_SPEC_KO / CHART_SPEC_KO)는 선택 사항이다. 없어도 된다.
+- 넣더라도 '이미지 생성'이 아니라, 발표자가 직접 도형/표를 그릴 수 있을 만큼의 텍스트 지시서만 작성한다.
 
---------------------------------
+추가 제약(최우선):
+- 출력의 모든 문장/표현은 한국어로 작성한다.
+- 영어 문장/영어 소제목/영어 불릿 금지.
+- 단, 고유명사/약어(API, GPU 등)만 예외적으로 허용.
+- 가능한 한 '한글 용어(괄호에 약어)' 형태로 쓴다. 예: 그래픽처리장치(GPU)
+- 문장 종결은 발표 메모형으로 작성한다. (예: ~확보, ~예정, ~검토, ~적용)
+- '~입니다/~합니다/~하였다' 같은 서술형 종결문은 사용하지 않는다.
+- 불릿은 '명사형/행동형 메모체'로 작성한다. (예: 데이터 확보, 일정 검토, 적용 예정)
 
-슬라이드 구성 규칙:
-
-각 섹션은 충분히 설명 가능한 수준까지 슬라이드를 분리한다.
-
-최소 슬라이드 수 규칙:
-- 연구 내용: 최소 4장 이상
-- 추진 계획: 최소 3장 이상
-
-여러 주제가 나오면 반드시 슬라이드를 분리한다.
-한 장에 과도하게 요약하지 않는다.
-
---------------------------------
-
-[연구 내용 섹션 전용 규칙]
-
-연구 내용 섹션에서는 반드시 다음 유형의 슬라이드를 각각 별도의 슬라이드로 포함한다:
-
-1. 전체 시스템 구성도
-2. 주요 모듈 설명
-3. 데이터 흐름 또는 처리 과정
-4. 핵심 기술 요소 설명
-
-전체 시스템 구성도는 반드시 포함한다.
-DIAGRAM_SPEC_KO는 반드시 작성한다.
-
-구성도 작성 규칙:
-- 최소 8개 이상의 구성요소 포함
-- 최소 2계층 이상 구조
-- 데이터 흐름과 시스템 구성요소를 함께 표현
-
-구성 요소 확장 규칙:
-원문에 기술 요소가 충분히 구체적이지 않더라도,
-일반적인 시스템 구조 수준에서 아래 계층은 구성요소로 확장할 수 있다:
-
-- 데이터 수집
-- 저장소
-- 처리 또는 모델
-- API 또는 서비스 계층
-- 시각화 또는 플랫폼
-
-단,
-특정 알고리즘명, 성능 수치, 존재하지 않는 기술은 임의로 생성하지 않는다.
-
-DIAGRAM_SPEC_KO 작성 방식:
-- 각 블록 이름
-- 블록 역할
-- 연결 관계
-- 데이터 흐름 방향
-
---------------------------------
-
-[추진 계획 섹션 규칙]
-
-추진 계획 섹션에서는 반드시 다음 슬라이드를 포함한다:
-
-1. 조직도(수행체계)
-2. 추진 일정 또는 단계
-3. 역할 분담 또는 업무 체계
-
-조직도 작성 방식:
-
-구조:
-최상단: 총괄기관 또는 총괄연구책임자
-
-그 아래:
-참여기관 박스들을 가로로 배치
-
-각 박스에는 반드시 포함:
-- 기관명
-- 담당 기술 또는 역할
-- 연구 인원 또는 담당 범위(있으면)
-
-DIAGRAM_SPEC_KO 작성 규칙:
-- 상단 1개 박스
-- 하단 최소 3개 기관 박스
-- 상하 연결선 포함
-- 각 기관 역할 한 줄 설명 포함
-
---------------------------------
-
-작성 원칙:
-- 추측 금지
-- 원문 기반 재구성만 허용
-- 표현은 간결하고 실제 발표자료 스타일로 작성
-- 설명은 발표자가 읽고 바로 설명할 수 있는 수준으로 작성
-- "수립", "제시", "기술", "정의" 같은 메타 설명 문장은 최소화하고 실제 내용 중심으로 작성
-
-슬라이드 수 규칙:
-
-서로 다른 기술이나 모델은 반드시 별도의 슬라이드로 작성한다.
-연구 내용 섹션은 최소 6장의 슬라이드로 구성한다.
-
-발표자료 전체 슬라이드 수는 최소 20장 이상이 되도록 작성한다.
-
-다음 섹션은 반드시 여러 장으로 나눈다:
-
-기관 소개: 최소 3장
-- 조직 및 역할
-- 핵심역량
-- 인프라 및 실적
-
-사업 개요: 최소 2장
-- 과제 개요
-- 개발 대상 기술
-
-연구 목표: 최소 2장
-- 최종 목표
-- 단계별 목표 또는 KPI
-
-연구 내용: 최소 5장
-- 전체 시스템 구조
-- 핵심 모델 또는 기술 1
-- 핵심 모델 또는 기술 2
-- 데이터 흐름 또는 처리 과정
-- 통합 플랫폼 또는 서비스 구조
-
-추진 계획: 최소 3장
-- 조직도
-- 일정 또는 단계
-- 역할 분담 또는 관리 체계
+[MUST RULES - PRESENTATION STYLE]
+- 문장 형태로 작성하지 않는다.
+- 모든 항목은 명사구 또는 키워드 형태로 작성한다.
+- 문장 종결어미 사용 금지 (~다, ~니다, ~합니다, ~됩니다 포함)
+- 발표 슬라이드용 bullet 형태로 작성한다.
+- 최소 3개의 bullet이 없는 경우 슬라이드를 생성하지 않는다.
+- 내용이 부족하면 슬라이드를 만들지 않는다.
+- 목차 슬라이드에서는 제목만 출력한다. 설명 문장은 출력하지 않는다.
+Additional KEY_MESSAGE constraints:
+- KEY_MESSAGE must not be a sentence.
+- KEY_MESSAGE must contain exactly 3 keyword/noun phrases.
+- KEY_MESSAGE format: keyword1, keyword2, keyword3
+- No formal endings in TITLE/KEY_MESSAGE/BULLETS/EVIDENCE:
+  합니다, 입니다, 됩니다, 있습니다, 가능합니다, 예상됩니다, 필요합니다, 수행합니다, 한다, 된다, 있다
 """.strip()
 
 
@@ -293,28 +211,131 @@ def _parse_bool(s: str) -> bool:
     return (s or "").strip().lower() in {"true", "1", "yes", "y"}
 
 
-def _fallback_min_slide(sec_title: str, order: int, deck_title: str) -> Dict[str, Any]:
-    # 섹션 드랍 방지용 최소 슬라이드 1장
-    return {
-        "section": sec_title,
-        "deck_title": deck_title or "발표자료",
-        "slides": [
-            {
-                "order": order,
-                "section": sec_title,
-                "slide_title": sec_title,
-                "key_message": "",
-                "bullets": ["(미기재)"],
-                "evidence": [{"type": "미기재", "text": "미기재"}],
-                "image_needed": False,
-                "image_type": "none",
-                "image_brief_ko": "",
-                "TABLE_MD": "",
-                "DIAGRAM_SPEC_KO": "",
-                "CHART_SPEC_KO": "",
-            }
-        ],
+def _to_phrase(text: Any) -> str:
+    t = re.sub(r"\s+", " ", str(text or "")).strip()
+    if not t:
+        return ""
+    t = re.sub(r"[.!?]+$", "", t).strip()
+    for end in FORBIDDEN_ENDINGS:
+        if t.endswith(end):
+            t = t[: -len(end)].strip()
+            break
+    return t
+
+
+def _keyword_tokens(text: Any) -> List[str]:
+    src = str(text or "").replace("\n", ",")
+    parts = re.split(r"[,/|·;]", src)
+    out: List[str] = []
+    for p in parts:
+        k = _to_phrase(p)
+        k = re.sub(r"^\d+[\.\)]\s*", "", k).strip()
+        k = re.sub(r"\s{2,}", " ", k).strip()
+        if not k:
+            continue
+        if _contains_formal_line(k):
+            continue
+        out.append(k)
+    return out
+
+
+def _format_key_message(key_message: Any, title: Any, bullets: List[Any]) -> str:
+    candidates: List[str] = []
+    candidates.extend(_keyword_tokens(key_message))
+    for b in (bullets or [])[:6]:
+        candidates.extend(_keyword_tokens(b))
+    candidates.extend(_keyword_tokens(title))
+
+    uniq: List[str] = []
+    seen = set()
+    for c in candidates:
+        key = re.sub(r"\s+", "", c.lower())
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        uniq.append(c)
+        if len(uniq) >= 3:
+            break
+
+    while len(uniq) < 3:
+        fallback = ["핵심 과제", "추진 방향", "운영 계획"][len(uniq)]
+        uniq.append(fallback)
+    return ", ".join(uniq[:3])
+
+
+def _slide_has_formal_lines(slide: Dict[str, Any]) -> bool:
+    if _contains_formal_line(slide.get("slide_title")):
+        return True
+    if _contains_formal_line(slide.get("key_message")):
+        return True
+    for b in (slide.get("bullets") or []):
+        if _contains_formal_line(b):
+            return True
+    for ev in (slide.get("evidence") or []):
+        if isinstance(ev, dict) and _contains_formal_line(ev.get("text")):
+            return True
+    return False
+
+
+def _rewrite_formal_lines_with_gemini(
+    client: genai.Client,
+    model: str,
+    slide: Dict[str, Any],
+) -> Dict[str, Any]:
+    prompt = (
+        "Rewrite slide text to presentation keywords only.\n"
+        "Rules:\n"
+        "- No sentence endings.\n"
+        "- No formal endings like 합니다/입니다/됩니다/있습니다.\n"
+        "- KEY_MESSAGE must be exactly 3 keyword phrases.\n"
+        "- BULLETS must be short noun phrases.\n"
+        "- EVIDENCE text must be short noun phrases.\n"
+        "Return JSON only with keys: title, key_message_keywords, bullets, evidence.\n"
+    )
+    payload = {
+        "title": str(slide.get("slide_title") or ""),
+        "key_message": str(slide.get("key_message") or ""),
+        "bullets": slide.get("bullets") or [],
+        "evidence": slide.get("evidence") or [],
     }
+    resp = generate_content_with_retry(
+        client,
+        model=model or "gemini-2.5-flash",
+        contents=[prompt, json.dumps(payload, ensure_ascii=False)],
+        config=types.GenerateContentConfig(
+            temperature=0.2,
+            max_output_tokens=1024,
+            response_mime_type="application/json",
+        ),
+        max_retries=1,
+    )
+    raw = (getattr(resp, "text", None) or "").strip()
+    obj = json.loads(raw) if raw else {}
+    if not isinstance(obj, dict):
+        return slide
+
+    out = dict(slide)
+    out["slide_title"] = _to_phrase(obj.get("title") or out.get("slide_title") or "")
+    km_list = obj.get("key_message_keywords") or []
+    if isinstance(km_list, list):
+        km_candidates = [_to_phrase(x) for x in km_list if _to_phrase(x)]
+    else:
+        km_candidates = _keyword_tokens(km_list)
+    out["key_message"] = _format_key_message(", ".join(km_candidates), out.get("slide_title"), out.get("bullets") or [])
+
+    bullets = obj.get("bullets") or out.get("bullets") or []
+    out["bullets"] = [_to_phrase(x) for x in bullets if _to_phrase(x) and not _contains_formal_line(x)]
+
+    ev_raw = obj.get("evidence") or out.get("evidence") or []
+    ev_out: List[Dict[str, str]] = []
+    if isinstance(ev_raw, list):
+        for ev in ev_raw:
+            if isinstance(ev, dict):
+                t = _to_phrase(ev.get("text"))
+                if t and not _contains_formal_line(t):
+                    ev_out.append({"type": str(ev.get("type") or "근거").strip(), "text": t})
+    out["evidence"] = ev_out
+    return out
 
 
 def _parse_slides_from_text(raw: str, *, default_section: str, start_order: int) -> List[Dict[str, Any]]:
@@ -322,9 +343,9 @@ def _parse_slides_from_text(raw: str, *, default_section: str, start_order: int)
     order = start_order
 
     for block in _iter_slide_blocks(raw):
-        section = _grab_field(block, "SECTION") or default_section
-        title = _grab_field(block, "TITLE")
-        key_message = _grab_field(block, "KEY_MESSAGE")
+        section = (_grab_field(block, "SECTION") or default_section).strip()
+        title = _grab_field(block, "TITLE").strip()
+        key_message = _grab_field(block, "KEY_MESSAGE").strip()
 
         image_needed = _parse_bool(_grab_field(block, "IMAGE_NEEDED"))
         image_type = (_grab_field(block, "IMAGE_TYPE") or "none").strip().lower()
@@ -332,31 +353,40 @@ def _parse_slides_from_text(raw: str, *, default_section: str, start_order: int)
             image_type = "none"
 
         image_brief_ko = _grab_multiline_field(block, "IMAGE_BRIEF_KO")
+
+        # ✅ 강제: 이미지 생성 사용 안 함 (사용자 요구)
+        image_needed = False
+        image_type = "none"
+        image_brief_ko = ""
+
         table_md = _grab_multiline_field(block, "TABLE_MD")
         diagram_spec_ko = _grab_multiline_field(block, "DIAGRAM_SPEC_KO")
         chart_spec_ko = _grab_multiline_field(block, "CHART_SPEC_KO")
 
-        bullets = _parse_bullets(block)
+        bullets = [_to_phrase(b) for b in _parse_bullets(block) if _to_phrase(b)]
         evidence = _parse_evidence(block)
 
+        # 챕터/파트/섹션 단독 슬라이드 제거
         upper_title = (title or "").upper()
         upper_section = (section or "").upper()
         if any(x in upper_title for x in ["CHAPTER", "PART", "SECTION"]) or any(
             x in upper_section for x in ["CHAPTER", "PART", "SECTION"]
         ):
             continue
+        if len(bullets) < 3:
+            continue
 
         slides.append(
             {
                 "order": order,
                 "section": section,
-                "slide_title": title,
-                "key_message": key_message,
+                "slide_title": _to_phrase(title) or title,
+                "key_message": _format_key_message(key_message, title, bullets),
                 "bullets": bullets,
                 "evidence": evidence,
-                "image_needed": bool(image_needed),
-                "image_type": image_type,
-                "image_brief_ko": image_brief_ko,
+                "image_needed": False,
+                "image_type": "none",
+                "image_brief_ko": "",
                 "TABLE_MD": table_md,
                 "DIAGRAM_SPEC_KO": diagram_spec_ko,
                 "CHART_SPEC_KO": chart_spec_ko,
@@ -367,28 +397,179 @@ def _parse_slides_from_text(raw: str, *, default_section: str, start_order: int)
     return slides
 
 
+def _fallback_slide_from_raw(raw: str, *, default_section: str, order: int) -> List[Dict[str, Any]]:
+    """
+    Fallback when model output misses strict SLIDE/ENDSLIDE format.
+    Keeps section from disappearing.
+    """
+    txt = (raw or "").strip()
+    if not txt:
+        return []
+
+    title = default_section or "핵심 내용"
+    key_message = ""
+    bullets: List[str] = []
+
+    for line in txt.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if not key_message and len(line) <= 80 and not line.startswith("-"):
+            key_message = line
+            continue
+        if line.startswith("-"):
+            b = line[1:].strip()
+            if b:
+                bullets.append(b)
+        elif len(line) <= 120:
+            bullets.append(line)
+        if len(bullets) >= 4:
+            break
+
+    if not key_message:
+        key_message = title
+    bullets = [_to_phrase(b) for b in bullets if _to_phrase(b)]
+    key_message = _format_key_message(key_message, title, bullets)
+    if len(bullets) < 3:
+        return []
+
+    return [
+        {
+            "order": order,
+            "section": default_section,
+            "slide_title": title,
+            "key_message": key_message,
+            "bullets": bullets[:4],
+            "evidence": [],
+            "image_needed": False,
+            "image_type": "none",
+            "image_brief_ko": "",
+            "TABLE_MD": "",
+            "DIAGRAM_SPEC_KO": "",
+            "CHART_SPEC_KO": "",
+        }
+    ]
+
+
+def _split_section_text_for_llm(text: str, *, max_chunk_chars: int, max_chunks: int) -> List[str]:
+    txt = (text or "").strip()
+    if not txt:
+        return []
+    if len(txt) <= max_chunk_chars:
+        return [txt]
+
+    paras = [p.strip() for p in re.split(r"\n{2,}", txt) if p.strip()]
+    if not paras:
+        paras = [txt]
+
+    chunks: List[str] = []
+    cur = ""
+    for p in paras:
+        if not cur:
+            cur = p
+            continue
+        if len(cur) + 2 + len(p) <= max_chunk_chars:
+            cur += "\n\n" + p
+        else:
+            chunks.append(cur)
+            cur = p
+    if cur:
+        chunks.append(cur)
+
+    if len(chunks) <= max_chunks:
+        return chunks
+
+    # 앞/중간/뒤를 남겨 긴 문서의 정보 손실 완화
+    if max_chunks <= 1:
+        return [chunks[0]]
+    if max_chunks == 2:
+        return [chunks[0], chunks[-1]]
+
+    mid_idx = len(chunks) // 2
+    sampled = [chunks[0], chunks[mid_idx], chunks[-1]]
+    return sampled[:max_chunks]
+
+
+# -----------------------------
+# Repair (keep only cleaning; no extra image instructions)
+# -----------------------------
+def _repair_slides(
+    slides: List[Dict[str, Any]],
+    *,
+    client: genai.Client | None = None,
+    model: str = "",
+) -> List[Dict[str, Any]]:
+    banned = ["본 슬라이드", "추후 보완", "제공되지 않아", "원문 근거 부족"]
+    for s in slides:
+        s["image_needed"] = False
+        s["image_type"] = "none"
+        s["image_brief_ko"] = ""
+
+        if _slide_has_formal_lines(s) and client is not None:
+            try:
+                s = _rewrite_formal_lines_with_gemini(client, model, s)
+            except Exception:
+                pass
+
+        km = str(s.get("key_message") or "")
+        if any(b in km for b in banned):
+            s["key_message"] = ""
+        s["slide_title"] = _to_phrase(s.get("slide_title"))
+        if _contains_formal_line(s["slide_title"]):
+            s["slide_title"] = ""
+
+        bullets = s.get("bullets") or []
+        nb = []
+        if isinstance(bullets, list):
+            for b in bullets:
+                bt = str(b or "").strip()
+                if not bt:
+                    continue
+                if any(x in bt for x in banned):
+                    continue
+                bp = _to_phrase(bt)
+                if bp and (not _contains_formal_line(bp)):
+                    nb.append(bp)
+        s["bullets"] = nb
+        s["key_message"] = _format_key_message(s.get("key_message"), s.get("slide_title"), s["bullets"])
+        if _contains_formal_line(s["key_message"]):
+            s["key_message"] = _format_key_message("", s.get("slide_title"), s["bullets"])
+
+        ev_out: List[Dict[str, str]] = []
+        for ev in (s.get("evidence") or []):
+            if not isinstance(ev, dict):
+                continue
+            ev_text = _to_phrase(ev.get("text"))
+            if not ev_text:
+                continue
+            if _contains_formal_line(ev_text):
+                continue
+            ev_out.append({"type": str(ev.get("type") or "근거").strip(), "text": ev_text})
+        s["evidence"] = ev_out
+
+        if len(s["bullets"]) < 3:
+            s["_drop_slide"] = True
+
+        # "미기재" 도식 강제는 하지 않음(후처리에서 이미지 제거/도식 그리기)
+        for k in ["TABLE_MD", "DIAGRAM_SPEC_KO", "CHART_SPEC_KO"]:
+            v = str(s.get(k) or "").strip()
+            if "미기재" in v or "원문" in v:
+                s[k] = ""
+
+    return [s for s in slides if not s.get("_drop_slide")]
+
+
 # -----------------------------
 # Node
 # -----------------------------
 def section_deck_generation_node(state: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    섹션별 Gemini 호출 → section_decks 생성
-
-    입력:
-      - state["sections"] = [{"title":..., "text":...}, ...] (권장)
-      - 없으면 extracted_text 전체를 단일 섹션으로 처리(최소 동작)
-
-    출력:
-      - state["deck_title"]
-      - state["section_decks"]
-    """
     sections = state.get("sections")
     extracted_text = (state.get("extracted_text") or "").strip()
 
     if not (isinstance(sections, list) and sections):
         if not extracted_text:
             raise RuntimeError("입력 텍스트가 비어 있습니다. (extracted_text/sections)")
-        sections = [{"title": (state.get("default_section") or "사업 개요"), "text": extracted_text}]
+        sections = [{"title": (state.get("default_section") or "연구 개요"), "text": extracted_text}]
 
     client: genai.Client = get_gemini_client()
     prompt = _build_prompt()
@@ -398,72 +579,210 @@ def section_deck_generation_node(state: Dict[str, Any]) -> Dict[str, Any]:
     order_cursor = 1
 
     for s in sections:
-        sec_title = (s.get("title") or "").strip()
+        sec_title = re.sub(r"\s+", " ", (s.get("title") or "")).strip()  # ✅ 핵심: strip
         sec_text = (s.get("text") or "").strip()
 
-        # ✅ 섹션명 공백 정규화: '기대  효과' -> '기대 효과'
-        sec_title = re.sub(r"\s+", " ", sec_title).strip()
+        # 표준화
+        alias = {
+            "연구내용": "연구 내용",
+            "추진계획": "추진 계획",
+            "기대효과": "활용방안 및 기대효과",
+            "활용계획": "활용방안 및 기대효과",
+            "사업개요": "연구 개요",
+            "사업 개요": "연구 개요",
+            "연구개요": "연구 개요",
+            "사업화 계획": "사업화 전략 및 계획",
+            "보안조치 이행계획": "사업화 전략 및 계획",
+            "안전조치 이행계획": "사업화 전략 및 계획",
+        }
+        sec_title = alias.get(sec_title, sec_title).strip()  # ✅ 핵심: strip
 
         if not sec_title:
             continue
 
-        # ✅ Q&A는 LLM 호출하지 않음
+        # 기관 소개는 DB 미연동 상태에서도 1장 고정 유지
+        if sec_title == "기관 소개":
+            one_slide = {
+                "order": order_cursor,
+                "section": "기관 소개",
+                "slide_title": "기관 소개 및 수행역량",
+                "key_message": "기관 정보 연동 대기",
+                "bullets": ["주관/참여기관 정보 연동 대기", "기관 핵심역량 및 수행실적 연동 대기"],
+                "evidence": [],
+                "image_needed": False,
+                "image_type": "none",
+                "image_brief_ko": "",
+                "TABLE_MD": (
+                    "| 항목 | 내용 |\n"
+                    "|---|---|\n"
+                    "| 기관 소개 | 기관 정보 연동 대기 |\n"
+                    "| 수행역량 | DB 연동 후 자동 반영 |\n"
+                ),
+                "DIAGRAM_SPEC_KO": "",
+                "CHART_SPEC_KO": "",
+            }
+            section_decks[sec_title] = {
+                "section": sec_title,
+                "deck_title": deck_title or "발표자료",
+                "slides": [one_slide],
+            }
+            order_cursor += 1
+            continue
+
+        # Q&A는 여기서 만들지 않음(merge에서 강제 추가)
         if sec_title.upper() in {"Q&A", "QNA", "QA"} or sec_title in {"질의응답", "질문", "응답"}:
             continue
 
-        # ✅ 텍스트가 비어/짧아도 섹션을 드랍하지 않음
-        if not sec_text:
-            sec_text = "(원문이 비어있음: 미기재)"
-        elif len(sec_text) < 80:
-            sec_text = sec_text + "\n(세부 근거/수치는 원문에 미기재)"
-
-        print("[DEBUG][gemini] section:", repr(sec_title), "len:", len(sec_text))
-
-        input_text = f"[섹션: {sec_title}]\n{sec_text}"
-
-        resp = generate_content_with_retry(
-            client,
-            model=state.get("gemini_model") or "gemini-2.5-flash",
-            contents=[prompt, input_text],
-            config=types.GenerateContentConfig(
-                max_output_tokens=int(state.get("gemini_max_output_tokens") or 4096),
-                temperature=float(state.get("gemini_temperature") or 0.4),
-            ),
-            max_retries=int(state.get("gemini_max_retries") or 5),
+        # 너무 짧아도 그냥 넘기지 말고 그대로 보냄(“미기재” 덧붙이지 않음)
+        max_chunk_chars = int(state.get("max_section_chunk_chars") or 6000)
+        max_chunks = int(state.get("max_section_chunks_per_section") or 3)
+        if sec_title == "연구 내용":
+            max_chunk_chars = int(state.get("research_content_chunk_chars") or 2400)
+            max_chunks = int(state.get("research_content_max_chunks") or 4)
+        sec_chunks = _split_section_text_for_llm(
+            sec_text,
+            max_chunk_chars=max_chunk_chars,
+            max_chunks=max_chunks,
         )
-
-        raw = (getattr(resp, "text", None) or "").strip()
-        print("[DEBUG][gemini] raw_len:", len(raw), "section:", repr(sec_title))
-
-        # ✅ 응답이 비어도 섹션 드랍 금지 (최소 슬라이드 1장)
-        if not raw:
-            section_decks[sec_title] = _fallback_min_slide(sec_title, order_cursor, deck_title)
-            order_cursor += 1
+        if not sec_chunks:
             continue
 
-        if not deck_title:
-            deck_title = _parse_deck_title(raw)
+        common_rules = """
+        [공통 강제 규칙]
+        - 모든 출력은 한국어. 영어 문장 금지(고유명사/약어만 예외).
+        - 메타 문장(본 슬라이드/추후 보완/제공되지 않아) 절대 금지. 부족하면 '미기재'로만 표기.
+        - 목차/표지/챕터/파트 같은 구분용 단독 슬라이드 생성 금지.
+        - 각 슬라이드는 TABLE/DIAGRAM/CHART 중 최소 1개를 우선 작성한다.
+        - 이미지 생성(IMAGE_NEEDED)은 항상 false.
+        - 문장 종결은 메모형(~확보/~예정/~검토/~적용) 사용. '~입니다/~합니다' 금지.
+        - 불릿은 설명문 대신 핵심 키워드 중심의 짧은 메모체로 작성.
+        - 불릿/키메시지에서 '~이다/~입니다/~합니다/~하였다' 서술형 문장 금지.
+        """.strip()
 
-        slides = _parse_slides_from_text(raw, default_section=sec_title, start_order=order_cursor)
 
-        # ✅ 파싱 실패해도 섹션 드랍 금지 (최소 슬라이드 1장)
-        if not slides:
-            section_decks[sec_title] = _fallback_min_slide(sec_title, order_cursor, deck_title)
-            order_cursor += 1
+        # 섹션별 추가 규칙(필요 최소만)
+        if sec_title == "기관 소개":
+            section_rules = """
+[추가 규칙]
+- '기관 소개' 섹션은 슬라이드 1장만 생성한다.
+- TITLE은 '기관 소개 및 수행역량'
+""".strip()
+        elif sec_title == "연구 내용":
+            section_rules = """
+[추가 규칙]
+- '연구 내용'은 압축 최소화. 원문에 있는 세부 항목을 가능한 한 빠짐없이 반영.
+- 서로 다른 세부 주제(예: 데이터, 모델, 보안, 운영, 협력)는 반드시 슬라이드 분리.
+- 슬라이드 수를 충분히 확보(최소 5장 이상 권장).
+- 각 슬라이드 BULLETS는 4~6개 작성(짧은 메모체), 중복 문장 금지.
+- 가능한 경우 TABLE_MD/DIAGRAM_SPEC_KO를 함께 작성해 정보 밀도 확보.
+- 일반적인 제목(예: '연구 내용', '핵심 포인트', '세부 정리') 단독 사용 금지.
+- 원문의 용어를 유지해 제목/불릿에 구체 키워드(모델명, 데이터, 산출물, 일정)를 반드시 포함.
+""".strip()
+        elif sec_title == "연구 개요":
+            section_rules = """
+[추가 규칙]
+- '연구 개요'는 최소 1장 이상 생성.
+- 과제 개요, 대상기술, 범위/목적을 우선 반영.
+- 개요/범위/목적은 설명문 금지, 명사구 bullet로만 작성.
+- KEY_MESSAGE는 반드시 키워드 3개(쉼표 구분)로 작성.
+- 단일 그림 1개만 있는 슬라이드 금지.
+- 2~3개 박스/카드 기반으로 개요·범위·대상기술을 구조적으로 설명.
+- 가능하면 TABLE_MD 또는 카드형 비교 구조를 포함.
+""".strip()
+        elif sec_title == "연구 필요성":
+            section_rules = """
+[추가 규칙]
+- '연구 필요성'은 최소 3장 이상 생성.
+- 국내외현황(1-2), 중요성/선행연구/중복성(1-3~1-5)을 분리 반영.
+""".strip()
+        elif sec_title == "연구 목표":
+            section_rules = """
+[추가 규칙]
+- '연구 목표'는 최소 2장 이상 생성.
+- 최종목표와 정량/정성 성능목표를 분리해 작성.
+""".strip()
+        elif sec_title == "사업화 전략 및 계획":
+            section_rules = """
+[추가 규칙]
+- '사업화 전략 및 계획'은 최소 2장 이상 생성.
+- 시장동향/지식재산권/표준화 전략/사업화 계획을 분리해 작성.
+""".strip()
+        else:
+            section_rules = ""
+
+        prompt_for_section = f"{prompt}\n\n{common_rules}\n\n{section_rules}".strip()
+        print("[DEBUG][gemini] section:", repr(sec_title), "chunks:", len(sec_chunks), "src_len:", len(sec_text))
+
+        section_slides: List[Dict[str, Any]] = []
+        for idx, chunk_text in enumerate(sec_chunks, 1):
+            chunk_header = f"[섹션: {sec_title}] [분할 {idx}/{len(sec_chunks)}]\n"
+            input_text = chunk_header + chunk_text
+            resp = generate_content_with_retry(
+                client,
+                model=state.get("gemini_model") or "gemini-2.5-flash",
+                contents=[prompt_for_section, input_text],
+                config=types.GenerateContentConfig(
+                    max_output_tokens=int(state.get("gemini_max_output_tokens") or 8192),
+                    temperature=float(state.get("gemini_temperature") or 0.4),
+                ),
+                max_retries=int(state.get("gemini_max_retries") or 5),
+            )
+
+            raw = (getattr(resp, "text", None) or "").strip()
+            print("[DEBUG][gemini] raw_len:", len(raw), "section:", repr(sec_title), "chunk:", idx)
+            if not raw:
+                continue
+
+            if not deck_title:
+                deck_title = _parse_deck_title(raw).strip()
+
+            slides = _parse_slides_from_text(raw, default_section=sec_title, start_order=order_cursor + len(section_slides))
+            slides = _repair_slides(
+                slides,
+                client=client,
+                model=state.get("gemini_model") or "gemini-2.5-flash",
+            )
+            if not slides:
+                slides = _fallback_slide_from_raw(raw, default_section=sec_title, order=order_cursor + len(section_slides))
+                slides = _repair_slides(
+                    slides,
+                    client=client,
+                    model=state.get("gemini_model") or "gemini-2.5-flash",
+                )
+            if slides:
+                section_slides.extend(slides)
+
+        if not section_slides:
             continue
 
-        order_cursor = max(order_cursor, max(sl["order"] for sl in slides) + 1)
+        # 섹션 내 중복 제목 최소 제거
+        seen_titles = set()
+        deduped: List[Dict[str, Any]] = []
+        for sl in section_slides:
+            key = re.sub(r"\s+", "", str(sl.get("slide_title") or "").lower())
+            if key and key in seen_titles:
+                continue
+            if key:
+                seen_titles.add(key)
+            deduped.append(sl)
+        if not deduped:
+            deduped = section_slides
+
+        for i, sl in enumerate(deduped, start=order_cursor):
+            sl["order"] = i
+        order_cursor += len(deduped)
 
         section_decks[sec_title] = {
             "section": sec_title,
             "deck_title": deck_title or "발표자료",
-            "slides": slides,
+            "slides": deduped,
         }
 
     if not section_decks:
         raise RuntimeError("Gemini가 섹션별 슬라이드를 생성하지 못했습니다. (section_decks=empty)")
 
-    state["deck_title"] = deck_title or "발표자료"
+    # Keep empty if unknown; merge_deck_node resolves final title from source/extracted text.
+    state["deck_title"] = deck_title or ""
     state["section_decks"] = section_decks
 
     print("[DEBUG] deck_title:", state["deck_title"])
