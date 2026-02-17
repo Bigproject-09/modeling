@@ -1,58 +1,86 @@
 # utils/db_lookup.py
 
 import os
+from urllib.parse import urlparse
+
 import pymysql
 from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def _resolve_db_config():
+    """
+    DB_URL / DB_USERNAME / DB_PASSWORD 우선 사용.
+    기존 DB_HOST/DB_PORT/DB_USER/DB_NAME는 폴백으로 지원.
+    """
+    db_url = (os.environ.get("DB_URL") or "").strip()
+    # Accept JDBC style URL as-is from env, e.g. jdbc:mysql://host:3306/db
+    if db_url.lower().startswith("jdbc:"):
+        db_url = db_url[5:]
+    db_username = (os.environ.get("DB_USERNAME") or "").strip()
+    db_password = os.environ.get("DB_PASSWORD", "")
+
+    if db_url:
+        parsed = urlparse(db_url)
+        if parsed.scheme and parsed.hostname:
+            return {
+                "host": parsed.hostname,
+                "port": parsed.port or 3306,
+                "user": db_username or parsed.username or "root",
+                "password": db_password or parsed.password or "",
+                "db": (parsed.path or "/").lstrip("/") or os.environ.get("DB_NAME", "randi_db"),
+            }
+
+    return {
+        "host": os.environ.get("DB_HOST", "127.0.0.1"),
+        "port": int(os.environ.get("DB_PORT", 3306)),
+        "user": os.environ.get("DB_USER", "root"),
+        "password": db_password or os.environ.get("DB_PASSWORD", "rootpw"),
+        "db": os.environ.get("DB_NAME", "randi_db"),
+    }
+
+
 def get_connection():
-    """
-    환경변수에서 DB 정보를 읽어 MySQL 연결 반환
-    """
+    """환경변수에서 DB 접속 정보를 읽어 MySQL 연결을 반환."""
+    cfg = _resolve_db_config()
     return pymysql.connect(
-        host=os.environ.get("DB_HOST", "127.0.0.1"),
-        port=int(os.environ.get("DB_PORT", 3306)),
-        user=os.environ.get("DB_USER", "root"),
-        password=os.environ.get("DB_PASSWORD", "rootpw"),
-        db=os.environ.get("DB_NAME", "randi_db"),
-        charset='utf8mb4',
-        cursorclass=pymysql.cursors.DictCursor  # 딕셔너리 형태로 결과 반환
+        host=cfg["host"],
+        port=int(cfg["port"]),
+        user=cfg["user"],
+        password=cfg["password"],
+        db=cfg["db"],
+        charset="utf8mb4",
+        cursorclass=pymysql.cursors.DictCursor,
     )
+
 
 def get_notice_info_by_id(notice_id):
     """
-    notice_id(PK)로 공고 정보 조회
-    
-    Args:
-        notice_id: 공고 고유 ID (PK)
-    
+    notice_id(PK)로 공고 정보 조회.
     Returns:
-        dict: {"seq": "공고번호", "author": "소관부처", "title": "공고명"}
-        실패 시 None
+        dict: {"seq": "...", "author": "...", "title": "..."} or None
     """
     conn = None
     try:
         conn = get_connection()
         with conn.cursor() as cursor:
-            # 테이블명과 컬럼명은 실제 DB 스키마에 맞게 수정하세요
             sql = """
-                SELECT 
+                SELECT
                     seq,
                     author,
                     title
-                FROM project_notices 
+                FROM project_notices
                 WHERE notice_id = %s
                 LIMIT 1
             """
             cursor.execute(sql, (notice_id,))
             row = cursor.fetchone()
-            
             if row:
                 return {
                     "seq": row["seq"],
                     "author": row["author"],
-                    "title": row.get("title", "")
+                    "title": row.get("title", ""),
                 }
     except Exception as e:
         print(f"[DB Error] get_notice_info_by_id 실패: {e}")
@@ -60,26 +88,17 @@ def get_notice_info_by_id(notice_id):
     finally:
         if conn:
             conn.close()
-    
     return None
+
 
 def find_ministry_by_seq_author(seq, author=None):
     """
-    공고 번호(seq)로 부처명을 찾습니다. 
-    author가 이미 있으면 그대로 반환하거나 검증용으로 씁니다.
-    
-    Args:
-        seq: 공고 번호
-        author: 기존 부처명 (있으면 그대로 반환)
-    
-    Returns:
-        str: 부처명, 실패 시 None
+    공고 번호(seq)로 부처명을 찾는다.
+    author가 이미 있으면 그대로 반환.
     """
-    # 1. 이미 부처명이 있으면 DB 조회 없이 바로 반환 (속도 최적화)
     if author:
         return author
 
-    # 2. 부처명이 없을 때만 DB 조회
     conn = None
     try:
         conn = get_connection()
@@ -95,6 +114,4 @@ def find_ministry_by_seq_author(seq, author=None):
     finally:
         if conn:
             conn.close()
-    
     return None
-                                                                                                                                                                                    
