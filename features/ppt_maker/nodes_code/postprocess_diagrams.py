@@ -81,6 +81,13 @@ def _section_at(deck_json: Dict[str, Any], idx: int) -> str:
     return ""
 
 
+def _prompt_type_at(deck_json: Dict[str, Any], idx: int) -> str:
+    slides = (deck_json or {}).get("slides") or []
+    if 0 <= idx < len(slides) and isinstance(slides[idx], dict):
+        return _norm(slides[idx].get("image_prompt_type")).lower()
+    return ""
+
+
 def _resolve_profile_assets(profile: str, state: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     st = state or {}
     module_dir = os.path.dirname(os.path.abspath(__file__))
@@ -93,6 +100,10 @@ def _resolve_profile_assets(profile: str, state: Optional[Dict[str, Any]]) -> Di
         assets["main"] = str(
             st.get("postprocess_bg_basic_main")
             or os.path.join(base_dir, "basic_main.png")
+        )
+        assets["image"] = str(
+            st.get("postprocess_bg_basic_image")
+            or os.path.join(base_dir, "basic_image.png")
         )
         assets["origin"] = str(
             st.get("postprocess_bg_basic_origin")
@@ -119,6 +130,7 @@ def _pick_profile_background_path(
     idx: int,
     total: int,
     section: str,
+    prompt_type: str,
     assets: Dict[str, Any],
     *,
     rng: random.Random,
@@ -128,9 +140,12 @@ def _pick_profile_background_path(
 
     if profile == "basic":
         main = str(assets.get("main") or "")
+        image = str(assets.get("image") or "")
         origin = str(assets.get("origin") or "")
         if idx in {0, total - 1}:
             return main
+        if prompt_type in {"system_architecture", "plan_orgchart_fixed"}:
+            return image or origin
         return origin
 
     if profile == "brown":
@@ -172,6 +187,7 @@ def _apply_background_profile_to_all_slides(
             idx,
             total,
             _section_at(deck_json, idx),
+            _prompt_type_at(deck_json, idx),
             assets,
             rng=rng,
         )
@@ -225,23 +241,24 @@ def _clear_slide(slide) -> None:
 
 
 def _extract_best_title(state: Dict[str, Any]) -> str:
+    default_title = "차세대 통합 해양·극지 기후예측시스템 개발"
     deck = (state.get("deck_json") or {})
-    slides = deck.get("slides") or []
-    if slides and isinstance(slides[0], dict):
-        first_title = _norm(slides[0].get("slide_title") or "")
-        if first_title:
-            return first_title
     title = _norm(deck.get("deck_title") or "")
     if title and title != "(怨쇱젣紐?誘멸린??":
         return title
-    # fallback
-    return title or "(怨쇱젣紐?誘멸린??"
+    return default_title
 
 
 def _write_cover(slide, title: str) -> None:
     _clear_slide(slide)
 
-    tx = slide.shapes.add_textbox(Inches(0.9), Inches(2.0), Inches(11.5), Inches(2.0))
+    # Cover accent lines (requested style)
+    _add_solid_rect(slide, left=0.0, top=0.0, width=13.333, height=0.12, rgb=(15, 76, 129))
+    _add_solid_rect(slide, left=0.0, top=7.38, width=13.333, height=0.12, rgb=(42, 157, 143))
+    _add_solid_rect(slide, left=0.9, top=1.95, width=4.2, height=0.08, rgb=(191, 217, 238))
+
+    # Move title slightly down for better balance.
+    tx = slide.shapes.add_textbox(Inches(0.9), Inches(3.4), Inches(11.5), Inches(2.0))
     tf = tx.text_frame
     tf.clear()
     p = tf.paragraphs[0]
@@ -251,24 +268,7 @@ def _write_cover(slide, title: str) -> None:
     run.font.bold = True
     run.font.color.rgb = RGBColor(20, 20, 20)
 
-    sub = slide.shapes.add_textbox(Inches(0.95), Inches(4.2), Inches(8.4), Inches(0.7))
-    tf2 = sub.text_frame
-    tf2.clear()
-    p2 = tf2.paragraphs[0]
-    r2 = p2.add_run()
-    r2.text = "援?? R&D ?쒖븞 諛쒗몴?먮즺"
-    r2.font.size = Pt(17)
-    r2.font.color.rgb = RGBColor(60, 79, 99)
-
-    tag = slide.shapes.add_textbox(Inches(10.2), Inches(6.4), Inches(2.2), Inches(0.5))
-    tft = tag.text_frame
-    tft.clear()
-    pt = tft.paragraphs[0]
-    rt = pt.add_run()
-    rt.text = "RanDi Auto Deck"
-    rt.font.size = Pt(12)
-    rt.font.bold = True
-    rt.font.color.rgb = RGBColor(15, 76, 129)
+    # Cover subtitle/tag removed by request.
 
 
 def _write_agenda(slide) -> None:

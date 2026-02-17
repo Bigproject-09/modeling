@@ -112,6 +112,12 @@ ENDSLIDE
 - 최소 3개의 bullet이 없는 경우 슬라이드를 생성하지 않는다.
 - 내용이 부족하면 슬라이드를 만들지 않는다.
 - 목차 슬라이드에서는 제목만 출력한다. 설명 문장은 출력하지 않는다.
+Title rules:
+- Title must be short.
+- Maximum two lines.
+- Do not generate long sentences.
+- Do not generate English text.
+- Use simple Korean title style.
 Additional KEY_MESSAGE constraints:
 - KEY_MESSAGE must not be a sentence.
 - KEY_MESSAGE must contain exactly 3 keyword/noun phrases.

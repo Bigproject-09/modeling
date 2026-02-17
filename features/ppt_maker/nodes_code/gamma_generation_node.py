@@ -24,7 +24,7 @@ def _save_checkpoint(state: dict) -> str:
 
 
 def _slides_to_input_text(deck: Dict[str, Any]) -> str:
-    title = (deck.get("deck_title") or "").strip() or "諛쒗몴?먮즺"
+    title = (deck.get("deck_title") or "").strip() or "발표자료"
     slides: List[Dict[str, Any]] = deck.get("slides") or []
     n = len(slides)
 
@@ -33,12 +33,11 @@ DECK_TITLE: {title}
 TOTAL_SLIDES: {n}
 
 ABSOLUTE RULES:
-- ?뺥솗??{n}?λ쭔 ?앹꽦. 異붽?/??젣/遺꾪븷/蹂묓빀 湲덉?.
-- ?쒖꽌 蹂寃?湲덉?.
-- ?ъ쭊/?쇰윭?ㅽ듃/罹먮┃??AI洹몃┝/諛곌꼍?대?吏/?꾩씠肄??앹꽦 湲덉?.
-- ?대?吏 placeholder(鍮??대?吏 ?곸뿭) 留뚮뱾吏 留?寃?
-- ??李⑦듃/?꾪삎 湲곕컲 ?ㅼ씠?닿렇?⑥? ?덉슜(?띿뒪???ㅽ럺 諛섏쁺).
-- 紐⑤뱺 ?띿뒪?몃뒗 ?쒓뎅?대줈 ?묒꽦(?곸뼱/怨좎쑀紐낆궗留??덉쇅).
+- 정확히 {n}장만 생성. 추가/삭제/분할/병합 금지.
+- 슬라이드 순서 변경 금지.
+- 사진/실사/캐릭터/배경 이미지 생성 금지.
+- 빈 이미지 placeholder(회색 박스, 깨진 아이콘) 생성 금지.
+- 텍스트는 한국어 중심으로 작성(고유명사/약어만 예외).
 [/DECK]
 """.strip()
 
@@ -52,7 +51,7 @@ ABSOLUTE RULES:
             x = _strip_formal_endings(str(x or "")).strip()
             if not x:
                 continue
-            if x in {"**POST_DIAGRAM_SYSTEM**", "**POST_DIAGRAM_ORGCHART**", "**?꾩떇 ?꾩쿂由????*"}:
+            if x in {"**POST_DIAGRAM_SYSTEM**", "**POST_DIAGRAM_ORGCHART**", "**후처리_대상**"}:
                 continue
             out.append(x)
             if len(out) >= limit:
@@ -62,7 +61,7 @@ ABSOLUTE RULES:
     slide_blocks: List[str] = []
     for i, s in enumerate(slides, 1):
         section = _strip_formal_endings((s.get("section") or "").strip())
-        slide_title = _strip_formal_endings((s.get("slide_title") or "").strip()) or "?щ씪?대뱶"
+        slide_title = _strip_formal_endings((s.get("slide_title") or "").strip()) or "슬라이드"
         key_message = _strip_formal_endings((s.get("key_message") or "").strip())
 
         bullets = _clean_lines(s.get("bullets") or [], limit=7)
@@ -76,7 +75,7 @@ ABSOLUTE RULES:
         if isinstance(evidence, list):
             for ev in evidence[:3]:
                 if isinstance(ev, dict):
-                    t = (ev.get("type") or "洹쇨굅").strip()
+                    t = (ev.get("type") or "근거").strip()
                     tx = _strip_formal_endings((ev.get("text") or "").strip())
                     if tx:
                         ev_lines.append(f"- ({t}) {tx}")
@@ -209,26 +208,27 @@ def _start_generation(
         },
 
         "additionalInstructions": (
-            f"諛섎뱶??{int(num_cards)}?λ쭔 ?앹꽦. 異붽?/??젣/遺꾪븷/蹂묓빀 湲덉?.\n"
-            f"?щ씪?대뱶 ?쒖꽌 蹂寃?湲덉?.\n"
+            f"정확히 {int(num_cards)}장만 생성. 추가/삭제/분할/병합 금지.\n"
+            f"슬라이드 순서 변경 금지.\n"
             f"SECTION 블록 순서 절대 유지: 기관 소개 -> 연구 개요 -> 연구 필요성 -> 연구 목표 -> 연구 내용 -> 추진 계획 -> 활용방안 및 기대효과 -> 사업화 전략 및 계획 -> Q&A.\n"
             f"한 섹션이 시작되면 다음 섹션으로 넘어가기 전까지 해당 섹션 슬라이드를 연속 배치.\n"
-            f"?곸뼱 臾몄옣/?곸뼱 ?쒕ぉ 湲덉?(?쎌뼱/怨좎쑀紐낆궗留??덉쇅).\n"
+            f"영어 문장/영어 제목 금지(고유명사/약어만 예외).\n"
             f"사진/실사/캐릭터/배경 이미지 생성 금지.\n"
-            f"??TABLE_MD), 李⑦듃(CHART_SPEC_KO), ?꾪삎 ?ㅼ씠?닿렇??DIAGRAM_SPEC_KO)? ?덉슜?섎ŉ ?대떦 ?ㅽ럺??諛섏쁺.\n"
+            f"TABLE_MD / CHART_SPEC_KO / DIAGRAM_SPEC_KO가 있으면 반드시 반영.\n"
             f"텍스트 밀도 과소 금지: 긴 문단은 금지하되, 슬라이드 당 정보 블록 최소 2개 이상 배치.\n"
             f"설명 문장보다 구조화된 정보 전달(표/도식) 우선.\n"
-            f"'異붽? ?뺣낫/臾몄쓽/?곕씫泥??뚯궗 ?뚭컻' 媛숈? 留덈Т由??щ씪?대뱶 ?앹꽦 湲덉?.\n"
-            f"留덉?留됱? ?쒓났??'媛먯궗?⑸땲?? 1?λ쭔 ?좎?(蹂듭젣 湲덉?).\n"
+            f"'추가 정보/문의/연락처' 같은 마무리 슬라이드 생성 금지.\n"
+            f"마지막은 '감사합니다' 1장만 허용(중복 금지).\n"
             f"디자인 스타일: 깔끔한 카드형 레이아웃, 균형 배치, 둥근 모서리 중심.\n"
             f"연한 회색 배경 + 블루 포인트 톤. 과도한 빈 공간 금지.\n"
             f"슬라이드별 SLIDE_LAYOUT / VISUAL_SLOT / CONTENT_DENSITY 힌트를 우선 적용.\n"
             f"NotebookLM 스타일처럼 제목-요약-구조화 정보 순서를 유지하고 카드 비율을 일정하게 배치.\n"
             f"한 슬라이드당 핵심 메시지 1개, 불릿은 3~5개 권장.\n"
             f"빈 공간이 크면 카드 2열/요약 박스/표/도식으로 반드시 채운다.\n"
-            f"IMAGE_NEEDED=true 인 슬라이드는 VISUAL_SLOT 위치에 '텍스트 없는 빈 이미지 슬롯(사각 패널)'을 반드시 만들어 둔다.\n"
-            f"IMAGE_NEEDED=true 인 슬라이드는 layout=text_image로 생성하고, 텍스트 영역은 좌측 60%, 이미지 영역은 우측 40%를 반드시 유지.\n"
-            f"텍스트 박스/도형/표는 이미지 슬롯을 침범하지 않도록 배치(겹침 금지).\n"
+            f"IMAGE_NEEDED=true 인 슬라이드는 빈 이미지 슬롯/회색 박스/깨진 이미지 아이콘을 절대 만들지 않는다.\n"
+            f"IMAGE_NEEDED=true 인 슬라이드는 layout=text_image로 생성하고, 우측 40% 영역은 도형/다이어그램/표 등 실제 시각요소로 직접 채운다.\n"
+            f"텍스트 박스/도형/표는 이미지/시각요소 영역을 침범하지 않도록 배치(겹침 금지).\n"
+            f"시각요소를 생성할 수 없으면 해당 슬라이드를 만들지 말고 이전/다음 슬라이드에 내용 통합.\n"
             f"입력 블록의 TITLE/KEY_MESSAGE/BULLETS는 의미 변경 없이 최대한 원문 그대로 사용.\n"
             f"문장 축약, 재서술, 표현 치환 최소화. 특히 TITLE은 원문 유지.\n"
             f"SLIDE 블록 1개를 카드 1장으로 1:1 매핑하고, 블록 병합/분할 금지.\n"
@@ -247,7 +247,7 @@ def _start_generation(
             f"Use structured explanatory layout with 2~3 boxes/cards and supporting bullets.\n"
             f"Prefer box/card comparison or matrix style that explains concept, scope, and context.\n"
             f"Keep enough explanatory text in '연구 개요' while maintaining concise bullet style.\n"
-            f"[SLIDE i/N] ~ [ENDSLIDE] 釉붾줉 寃쎄퀎瑜?諛섎뱶??洹몃?濡??좎?."
+            f"Keep [SLIDE i/N] ... [ENDSLIDE] blocks unchanged."
         ),
     }
 

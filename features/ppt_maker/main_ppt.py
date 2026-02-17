@@ -335,7 +335,7 @@ def run_ppt_generation(
         # 최소 장수 강제는 기본 비활성(부족 시에만 환경값으로 활성)
         "min_slide_count": int(os.environ.get("PPT_MIN_SLIDE_COUNT") or 0),
         # 후처리 스타일 보강
-        "postprocess_rewrite_cover": False,
+        "postprocess_rewrite_cover": True,
         "force_rewrite_cover": True,
         "postprocess_rewrite_agenda": False,
         "postprocess_style_tables": False,
