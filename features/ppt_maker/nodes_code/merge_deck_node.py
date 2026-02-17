@@ -197,6 +197,8 @@ def _is_generic_title(title: str) -> bool:
         return True
     if t in {"(과제명 미기재)", "연구개발 과제 제안서"}:
         return True
+    if ("媛쒖슂" in t and "紐⑺몴" in t) and len(t) <= 20:
+        return True
     if re.fullmatch(r"[_\-\s]+", t):
         return True
     return False
@@ -371,6 +373,29 @@ def _is_valid_slide(s: Dict[str, Any]) -> bool:
     )
 
 
+def _ensure_min_bullets(s: Dict[str, Any], min_count: int = 3) -> Dict[str, Any]:
+    out = dict(s)
+    bullets = [_to_memo_phrase(b) for b in (out.get("bullets") or []) if _to_memo_phrase(b)]
+    key = _to_memo_phrase(out.get("key_message"))
+    title = _clean_text(out.get("slide_title"))
+    if key and key not in bullets:
+        bullets.append(key)
+    if title and title not in bullets:
+        bullets.append(title)
+    extras = [
+        "핵심 과업 단계별 수행",
+        "주요 산출물 및 검증 지표",
+        "리스크 대응 및 협업 체계",
+    ]
+    for x in extras:
+        if len(bullets) >= int(min_count):
+            break
+        if x not in bullets:
+            bullets.append(x)
+    out["bullets"] = bullets[: max(int(min_count), 5)]
+    return out
+
+
 def _make_min_section_slide(section: str, order: int, chunk_text: str = "", variant: int = 1) -> Dict[str, Any]:
     base = _clean_text(chunk_text).replace("\n", " ")
     if len(base) > 120:
@@ -535,24 +560,41 @@ def _force_fixed_image_targets(slides: List[Dict[str, Any]]) -> List[Dict[str, A
             s["visual_slot"] = "none"
 
     # fixed image targets:
-    # 1) first slide in '추진 계획'
-    # 2) '시스템 아키텍처' slide in '연구 내용'
+    # 1) last slide in '연구 개요'
+    # 2) '시스템 아키텍처' slide in '연구 내용' (fixed overlay)
+    overview_sec = SECTION_ORDER[1] if len(SECTION_ORDER) > 1 else ""
     plan_sec = SECTION_ORDER[5] if len(SECTION_ORDER) > 5 else ""
     content_sec = SECTION_ORDER[4] if len(SECTION_ORDER) > 4 else ""
-    picked_plan = False
-    for s in slides:
+    overview_last_idx = -1
+    plan_last_idx = -1
+    for i, s in enumerate(slides):
+        if not isinstance(s, dict):
+            continue
+        if str(s.get("section") or "") == overview_sec:
+            overview_last_idx = i
+        if str(s.get("section") or "") == plan_sec:
+            plan_last_idx = i
+
+    for i, s in enumerate(slides):
         if not isinstance(s, dict):
             continue
         sec = str(s.get("section") or "")
         title = str(s.get("slide_title") or "")
-        if (not picked_plan) and sec == plan_sec:
+        if i == overview_last_idx and overview_last_idx >= 0:
             s["image_needed"] = True
             s["image_type"] = "diagram"
-            s["image_prompt_type"] = "plan"
+            s["image_prompt_type"] = "overview_last"
             s["layout"] = "text_image"
             s["slide_layout"] = "text_image"
             s["visual_slot"] = "right_large"
-            picked_plan = True
+            continue
+        if i == plan_last_idx and plan_last_idx >= 0:
+            s["image_needed"] = True
+            s["image_type"] = "diagram"
+            s["image_prompt_type"] = "plan_orgchart_fixed"
+            s["layout"] = "text_image"
+            s["slide_layout"] = "text_image"
+            s["visual_slot"] = "right_large"
             continue
         if sec == content_sec and ("시스템 아키텍처" in title):
             s["image_needed"] = True
@@ -598,8 +640,7 @@ def merge_deck_node(state: Dict[str, Any]) -> Dict[str, Any]:
     ]
     section_decks = state.get("section_decks") or {}
     if (not deck_title) or any(m in deck_title for m in bad_title_markers):
-        inferred = _infer_title_from_section_decks(section_decks if isinstance(section_decks, dict) else {})
-        deck_title = inferred or default_cover_title
+        deck_title = default_cover_title
 
     normalized = {_norm(k): v for k, v in section_decks.items() if _norm(k)}
     section_min = _resolve_section_min_slides(state)
@@ -673,6 +714,8 @@ def merge_deck_node(state: Dict[str, Any]) -> Dict[str, Any]:
         for s in valid:
             s["order"] = order
             order += 1
+            if sec == SECTION_ORDER[5]:
+                s = _ensure_min_bullets(s, min_count=3)
             slides.append(_assign_layout_hints(s))
 
         # 연구 내용 섹션 마지막: 시스템 아키텍처 전용 슬라이드 추가
@@ -682,8 +725,8 @@ def merge_deck_node(state: Dict[str, Any]) -> Dict[str, Any]:
             order += 1
             slides.append(arch_slide)
 
-        # 기관 소개 섹션 마지막: "왜 우리가 해야 하는가" 1장 추가
-        if sec == SECTION_ORDER[0]:
+        # 연구 개요 섹션 다음: "왜 우리가 해야 하는가" 1장 추가
+        if sec == SECTION_ORDER[1]:
             why_slide = _make_why_us_slide(sec, order)
             why_slide["order"] = order
             order += 1
