@@ -213,17 +213,13 @@ async def api_run_step3(
     token: str = Form(None),
 ):
     """
-    PPT 생성 전체 워크플로우
-    - 결과는 로컬 output에 저장
-    - DB 저장(스프링) 절대 안 함
+    PPT generation workflow.
+    - Stores output under local output directory.
+    - Does not write DB in this step.
     """
-    from features.ppt_maker.nodes_code.extract_text_node import extract_text
-    from features.ppt_maker.nodes_code.section_split_node import section_split_node
-    from features.ppt_maker.nodes_code.section_deck_generation_node import section_deck_generation_node
-    from features.ppt_maker.nodes_code.merge_deck_node import merge_deck_node
-    from features.ppt_maker.nodes_code.gamma_generation_node import gamma_generation_node
+    from features.ppt_maker.main_ppt import run_ppt_generation
 
-    print(f"[Step 3] PPT 생성 요청: {file.filename}, notice_id={notice_id}")
+    print(f"[Step 3] PPT generation request: {file.filename}, notice_id={notice_id}")
 
     os.makedirs("tmp", exist_ok=True)
     ext = os.path.splitext(file.filename)[1].lower()
@@ -233,55 +229,61 @@ async def api_run_step3(
         content = await file.read()
         with open(tmp_path, "wb") as f:
             f.write(content)
-        print(f"  ✅ 파일 저장: {tmp_path}")
+        print(f"  file saved: {tmp_path}")
 
-        state = {
-            "source_path": tmp_path,
-            "parsing_out_dir": "tmp/parsing",
-            "gemini_model": "gemini-2.5-flash",
-            "gemini_temperature": 0.4,
-            "gemini_max_output_tokens": 4096,
-            "gamma_timeout_sec": 600,
-            "output_dir": "output",
-        }
+        render_mode = (os.getenv("PPT_RENDER_MODE", "gamma") or "gamma").strip().lower()
+        gamma_timeout_sec = int(os.getenv("PPT_GAMMA_TIMEOUT_SEC", "900"))
 
-        print(f"  [1/5] 텍스트 추출...")
-        extract_text(state)
-        print(f"  ✅ {len(state.get('extracted_text', ''))} 글자")
+        final_state = run_ppt_generation(
+            source_path=tmp_path,
+            notice_id=str(notice_id or ""),
+            output_dir="output",
+            render_mode=render_mode,
+            gamma_timeout_sec=gamma_timeout_sec,
+        )
+        if not isinstance(final_state, dict) or not final_state:
+            raise RuntimeError("run_ppt_generation returned empty result")
 
-        print(f"  [2/5] 섹션 분할...")
-        section_split_node(state)
-        sections = state.get("sections", [])
-        print(f"  ✅ {len(sections)}개 섹션")
+        deck_json = final_state.get("deck_json") or {}
+        slides = deck_json.get("slides") if isinstance(deck_json, dict) else []
+        total_slides = len(slides) if isinstance(slides, list) else 0
+        if total_slides == 0:
+            try:
+                total_slides = int(final_state.get("total_slides") or 0)
+            except Exception:
+                total_slides = 0
 
-        print(f"  [3/5] 슬라이드 생성...")
-        section_deck_generation_node(state)
-        total = sum(len(v.get("slides", [])) for v in state.get("section_decks", {}).values())
-        print(f"  ✅ {total}장")
+        deck_title = ""
+        if isinstance(deck_json, dict):
+            deck_title = str(deck_json.get("deck_title") or "").strip()
+        if not deck_title:
+            deck_title = str(final_state.get("deck_title") or "").strip()
 
-        print(f"  [4/5] 병합...")
-        merge_deck_node(state)
-        merged = len(state.get("deck_json", {}).get("slides", []))
-        print(f"  ✅ {merged}장")
+        def _pick_first_non_empty(*values):
+            for value in values:
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+            return ""
 
-        print(f"  [5/5] PPTX 생성...")
-        gamma_generation_node(state)
+        pptx_path = _pick_first_non_empty(
+            final_state.get("final_ppt_path"),
+            final_state.get("gamma_ppt_path"),
+            final_state.get("pptx_path"),
+        )
+        if not pptx_path:
+            raise RuntimeError("PPT generation failed: final pptx_path is empty")
+        print(f"  pptx_path={pptx_path}")
 
-        pptx_path = state.get("pptx_path") or state.get("final_ppt_path")
-        print(f"  ✅ pptx_path={pptx_path}")
-
-        pptx_filename = os.path.basename(pptx_path) if pptx_path else None
-        download_url = f"/download/pptx/{pptx_filename}" if pptx_filename else None
+        pptx_filename = os.path.basename(pptx_path)
+        download_url = f"/download/pptx/{pptx_filename}"
 
         result = {
-            "deck_title": state.get("deck_title"),
-            "total_slides": merged,
+            "deck_title": deck_title,
+            "total_slides": total_slides,
             "pptx_path": pptx_path,
             "pptx_filename": pptx_filename,
             "download_url": download_url,
         }
-
-        # ✅ DB 저장 블록 삭제(절대 안 함)
 
         return JSONResponse({"status": "success", "data": result})
 
