@@ -43,7 +43,7 @@ def init_law_search():
     print("ChromaDB 초기화 중...")
     
     # ChromaDB 클라이언트
-    _chroma_client = chromadb.PersistentClient(path=CHROMA_DB_DIR)
+    _chroma_client = chromadb.HttpClient(host=os.environ.get("LAW_CHROMA_HOST","chroma_law"), port=int(os.environ.get("LAW_CHROMA_PORT","8000")))
     _chroma_collection = _chroma_client.get_collection(name=COLLECTION_NAME)
     
     # 임베딩 모델
@@ -120,7 +120,7 @@ def search_law_regulations(
     law_results = []
     
     for i in range(len(results['ids'][0])):
-        meta = results['metadatas'][0][i]
+        meta = results['metadatas'][0][i] or {}
         doc = results['documents'][0][i]
         distance = results['distances'][0][i]
         score = 1 - distance  # 거리를 유사도로 변환
@@ -130,14 +130,14 @@ def search_law_regulations(
             continue
         
         law_results.append({
-            "law_name": meta['law_name'],
-            "law_type": meta['law_type'],
+            "law_name": meta.get('law_name', ''),
+            "law_type": meta.get('law_type', ''),
             "regulation_type": meta.get('regulation_type', ''),
             "regulation_number": meta.get('regulation_number', ''),
-            "article_number": meta['article_number'],
-            "article_title": meta['article_title'],
+            "article_number": meta.get('article_number', ''),
+            "article_title": meta.get('article_title', ''),
             "full_reference": meta.get('full_reference', ''),
-            "content": doc.replace("passage: ", ""),
+            "content": (doc or "").replace("passage: ", ""),
             "score": round(score * 100, 1)
         })
     
