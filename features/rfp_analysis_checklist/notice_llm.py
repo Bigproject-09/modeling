@@ -1,4 +1,4 @@
-"""
+﻿"""
 공고문 분석 및 자격요건 자동 판정 시스템 (notice_llm)
 
 DB에 저장된 사업보고서 섹션 JSON을 조회하여:
@@ -8,6 +8,7 @@ DB에 저장된 사업보고서 섹션 JSON을 조회하여:
 
 import os
 import json
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 from google import genai
 import mysql.connector
@@ -20,6 +21,24 @@ load_dotenv()
 # =========================================================
 def get_db_conn():
     """MySQL 커넥션 생성"""
+    # DB_URL / DB_USERNAME / DB_PASSWORD 우선 지원
+    db_url = (os.environ.get("DB_URL") or "").strip()
+    db_user = (os.environ.get("DB_USERNAME") or os.environ.get("DB_USER") or "").strip()
+    db_pw = os.environ.get("DB_PASSWORD") or ""
+    if db_url.lower().startswith("jdbc:"):
+        db_url = db_url[5:]
+    if db_url:
+        parsed = urlparse(db_url)
+        if parsed.hostname:
+            db_name = (parsed.path or "/").lstrip("/") or os.environ.get("DB_NAME") or ""
+            return mysql.connector.connect(
+                host=parsed.hostname,
+                port=int(parsed.port or 3306),
+                user=db_user or (parsed.username or ""),
+                password=db_pw or (parsed.password or ""),
+                database=db_name,
+            )
+
     return mysql.connector.connect(
         host=os.environ["DB_HOST"],
         port=int(os.environ.get("DB_PORT", "3306")),
@@ -453,3 +472,133 @@ def deep_analysis(
         return result
     except json.JSONDecodeError as e:
         raise RuntimeError(f"JSON 파싱 실패: {e}\n응답 내용:\n{text}")
+
+
+
+# =========================================================
+# 기관소개 전용 추출 (DB JSON -> LLM 요약)
+# =========================================================
+SYSTEM_INSTRUCTION_ORG_PROFILE = """
+너는 발표자료 기관소개 슬라이드 요약 전문가다.
+입력으로 전달된 company 메타정보와 business_report_sections JSON에서
+기관소개에 필요한 정보만 추출해 JSON으로 출력한다.
+
+출력 JSON 스키마:
+{
+  "company_name": "회사명",
+  "company_type": "기관 유형",
+  "employees": "인력 정보(없으면 빈 문자열)",
+  "one_line_intro": "한 줄 소개",
+  "core_competency": ["핵심역량1", "핵심역량2", "핵심역량3"],
+  "key_achievements": ["주요 실적1", "주요 실적2"],
+  "evidence": ["근거1", "근거2"]
+}
+
+규칙:
+- 추측 금지, 근거 없으면 빈 문자열/빈 배열
+- 문장 짧게 (발표용)
+- JSON 외 텍스트 출력 금지
+""".strip()
+
+
+def load_company_profile_from_db(company_id: int) -> dict:
+    """companies 테이블에서 기관소개용 필드와 sections JSON 조회"""
+    conn = get_db_conn()
+    cur = None
+    try:
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            """
+            SELECT
+                company_id,
+                company_name,
+                user_entity_type,
+                employees,
+                history,
+                core_competency,
+                business_report_sections
+            FROM companies
+            WHERE company_id = %s
+            LIMIT 1
+            """,
+            (company_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise RuntimeError(f"company_id {company_id}에 해당하는 회사 정보를 찾을 수 없습니다.")
+
+        sections = row.get("business_report_sections")
+        if isinstance(sections, str):
+            try:
+                sections = json.loads(sections)
+            except Exception:
+                sections = []
+        if sections is None:
+            sections = []
+
+        return {
+            "company_id": row.get("company_id"),
+            "company_name": row.get("company_name") or "",
+            "company_type": row.get("user_entity_type") or "",
+            "employees": row.get("employees"),
+            "history": row.get("history") or "",
+            "core_competency": row.get("core_competency") or "",
+            "business_report_sections": sections,
+        }
+    finally:
+        try:
+            if cur:
+                cur.close()
+        finally:
+            conn.close()
+
+
+def org_profile_prompt(company_profile: dict) -> str:
+    """기관소개 요약용 프롬프트 생성 (JSON only)"""
+    sections = company_profile.get("business_report_sections") or []
+    if not isinstance(sections, list):
+        sections = []
+    sections = sections[:30]
+
+    return (
+        "다음 business_report_sections JSON만 보고 기관소개 슬라이드용 요약 JSON을 작성하라.\n\n"
+        "[BUSINESS_REPORT_SECTIONS]\n"
+        + json.dumps(sections, ensure_ascii=False)
+    )
+
+
+def extract_org_profile(company_id: int, model: str = "gemini-2.5-flash", temperature: float = 0.1) -> dict:
+    """DB JSON을 읽어 기관소개 슬라이드용 요약 JSON 반환"""
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY 또는 GOOGLE_API_KEY가 설정되어 있지 않습니다.")
+
+    company_profile = load_company_profile_from_db(company_id)
+    prompt = org_profile_prompt(company_profile)
+
+    client = genai.Client(api_key=api_key)
+    response = client.models.generate_content(
+        model=model,
+        contents=prompt,
+        config=genai.types.GenerateContentConfig(
+            system_instruction=SYSTEM_INSTRUCTION_ORG_PROFILE,
+            temperature=temperature,
+        ),
+    )
+
+    text = (response.text or "").strip()
+    if not text:
+        raise RuntimeError("기관소개 추출 응답이 비어있습니다.")
+
+    if text.startswith("```json"):
+        text = text[7:]
+    if text.startswith("```"):
+        text = text[3:]
+    if text.endswith("```"):
+        text = text[:-3]
+
+    try:
+        return json.loads(text.strip())
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"기관소개 JSON 파싱 실패: {e}\n응답 내용:\n{response.text}")
+
