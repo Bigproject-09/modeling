@@ -151,7 +151,7 @@ def _pick_profile_background_path(
     if profile == "brown":
         content = str(assets.get("content") or "")
         origins = [p for p in (assets.get("origins") or []) if str(p).strip()]
-        if idx == 1 or sec == "紐⑹감":
+        if idx == 1 or sec == "목차":
             return content
         if origins:
             return rng.choice(origins)
@@ -241,7 +241,7 @@ def _clear_slide(slide) -> None:
 
 
 def _extract_best_title(state: Dict[str, Any]) -> str:
-    default_title = "차세대 통합 해양·극지 기후예측시스템 개발"
+    default_title = "국가 R&D 제안 발표자료"
     deck = (state.get("deck_json") or {})
     title = _norm(deck.get("deck_title") or "")
     if title and title != "(과제명 미기재)":
@@ -279,7 +279,7 @@ def _write_agenda(slide) -> None:
     tf_t.clear()
     p0 = tf_t.paragraphs[0]
     r0 = p0.add_run()
-    r0.text = "紐⑹감"
+    r0.text = "목차"
     r0.font.size = Pt(32)
     r0.font.bold = True
     r0.font.color.rgb = RGBColor(20, 20, 20)
@@ -312,7 +312,7 @@ def _add_solid_rect(slide, *, left: float, top: float, width: float, height: flo
 
 
 def _decorate_cover_slide(slide) -> None:
-    # ?곷떒/?섎떒 而щ윭 諛대뱶濡??쒖? 諛??蹂닿컯
+    # 상단/하단 컬러 밴드로 표지 배경을 보강한다.
     _add_solid_rect(slide, left=0.0, top=0.0, width=13.333, height=0.45, rgb=(15, 76, 129))
     _add_solid_rect(slide, left=0.0, top=7.2, width=13.333, height=0.18, rgb=(42, 157, 143))
     _add_solid_rect(slide, left=0.8, top=1.4, width=4.6, height=0.16, rgb=(42, 157, 143))
@@ -507,7 +507,7 @@ def _remove_visual_placeholders(
                 ph = getattr(sh, "placeholder_format", None)
                 ph_type = str(getattr(ph, "type", "")).lower() if ph else ""
                 nm = (getattr(sh, "name", "") or "").lower()
-                if ("picture" in ph_type) or ("pic" in ph_type) or ("image" in nm) or ("picture" in nm) or ("?대?吏" in nm):
+                if ("picture" in ph_type) or ("pic" in ph_type) or ("image" in nm) or ("picture" in nm):
                     _remove_shape(sh)
                     removed += 1
                     continue
@@ -662,11 +662,11 @@ def postprocess_diagrams(pptx_path: str, deck_json: Dict[str, Any], state: Optio
     if apply_template:
         _decorate_content_slides(prs)
 
-    # 2.5) table style (?좏깮)
+    # 2.5) table style (선택)
     if style_tables:
         _style_tables(prs)
     _apply_font_name(prs, (state or {}).get("font_name") or "")
-    # 3) ?붾뵫 ?뺣━ (?좏깮)
+    # 3) 엔딩 정리 (선택)
     if trim_ending:
         _trim_ending_slides(prs)
 
