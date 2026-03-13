@@ -244,7 +244,7 @@ def _extract_best_title(state: Dict[str, Any]) -> str:
     default_title = "차세대 통합 해양·극지 기후예측시스템 개발"
     deck = (state.get("deck_json") or {})
     title = _norm(deck.get("deck_title") or "")
-    if title and title != "(怨쇱젣紐?誘멸린??":
+    if title and title != "(과제명 미기재)":
         return title
     return default_title
 
@@ -322,7 +322,8 @@ def _decorate_cover_slide(slide) -> None:
 
 
 def _decorate_thanks_slide(slide) -> None:
-    # 留덉?留??щ씪?대뱶???숈씪???ㅼ쓽 ?됱긽 ?ъ씤??    _add_solid_rect(slide, left=0.0, top=0.0, width=0.22, height=7.5, rgb=(15, 76, 129))
+    # 마지막 슬라이드에 동일한 색상 포인트를 추가한다.
+    _add_solid_rect(slide, left=0.0, top=0.0, width=0.22, height=7.5, rgb=(15, 76, 129))
     _add_solid_rect(slide, left=0.22, top=7.05, width=13.11, height=0.30, rgb=(232, 241, 250))
 
 
@@ -337,7 +338,7 @@ def _decorate_content_slides(prs: Presentation) -> None:
 
 
 def _style_tables(prs: Presentation) -> None:
-    # ???ㅻ뜑/蹂몃Ц ?됱긽 ?듭씪濡?媛?낆꽦 蹂닿컯
+    # 헤더/본문 색상을 통일해 가독성을 보강한다.
     for slide in prs.slides:
         for sh in slide.shapes:
             if not getattr(sh, "has_table", False):
@@ -368,7 +369,7 @@ def _style_tables(prs: Presentation) -> None:
                                 run.font.bold = True
                                 run.font.size = Pt(11)
                             else:
-                                # 蹂몃Ц? ?고듃瑜?議곌툑 以꾩뿬 overflow ?꾪솕
+                                # 본문은 폰트를 조금 줄여 overflow를 완화한다.
                                 run.font.size = Pt(10)
 
 
@@ -439,8 +440,8 @@ def _apply_font_name(prs: Presentation, font_name: str) -> None:
 
 def _slides_with_structured_visuals(deck_json: Dict[str, Any]) -> Set[int]:
     """
-    deck_json???щ씪?대뱶 以?TABLE/DIAGRAM/CHART ?ㅽ럺???덈뒗 ?щ씪?대뱶 index(0-based)瑜?諛섑솚.
-    ?대윴 ?щ씪?대뱶??Gamma媛 洹몃┝(PICTURE)濡??뚮뜑留곹븷 ???덉쑝??PICTURE瑜?蹂댁〈?댁빞 ??
+    deck_json 슬라이드 중 TABLE/DIAGRAM/CHART 스펙이 있는 슬라이드 index(0-based)를 반환한다.
+    이런 슬라이드는 Gamma가 그림(PICTURE)으로 렌더링할 수 있어 PICTURE를 보존해야 한다.
     """
     keep: Set[int] = set()
     slides = (deck_json or {}).get("slides") or []
@@ -484,15 +485,15 @@ def _remove_visual_placeholders(
     remove_pictures: bool = True,
 ) -> int:
     """
-    - AI ?대?吏/placeholder留??쒓굅
-    - ?? 援ъ“?붾맂 ?쒓컖?먮즺(??李⑦듃/?ㅼ씠?닿렇?? ?ㅽ럺???덈뒗 ?щ씪?대뱶??PICTURE 蹂댁〈
+    - AI 이미지/placeholder만 제거
+    - 구조화된 시각자료(표/차트/다이어그램 스펙이 있는 슬라이드)의 PICTURE는 보존
     """
     removed = 0
     for si, slide in enumerate(prs.slides):
         for sh in list(slide.shapes):
-            # 1) ?ㅼ젣 洹몃┝
+            # 1) 실제 그림
             if remove_pictures and sh.shape_type == MSO_SHAPE_TYPE.PICTURE:
-                # ?????꾪몴/?ㅼ씠?닿렇?⑥씠 洹몃┝?쇰줈 ?ㅼ뼱???щ씪?대뱶??蹂댁〈
+                # 표/다이어그램이 그림으로 들어간 슬라이드는 보존
                 if si in keep_picture_slide_idxs:
                     continue
                 _remove_shape(sh)
@@ -511,7 +512,7 @@ def _remove_visual_placeholders(
                     removed += 1
                     continue
 
-            # 3) ?꾪삎?쇰줈 留뚮뱾?댁쭊 '?대?吏 ?먮━'留??쒓굅 (?ㅼ젣 ?ㅼ씠?닿렇???꾪삎? 嫄대뱶由ъ? ?딅룄濡??대쫫 湲곕컲?쇰줈留?
+            # 3) 도형으로 만든 '이미지 자리'만 제거
             if sh.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE:
                 if keep_placeholder_slide_idxs and si in keep_placeholder_slide_idxs:
                     continue
@@ -526,9 +527,9 @@ def _remove_visual_placeholders(
 
 def _trim_ending_slides(prs: Presentation) -> None:
     """
-    留덉?留됱뿉 媛먯궗/Q&A媛 ?щ윭 ???앷린嫄곕굹, ?몃뜲?녿뒗 ?붾뵫??遺숇뒗 寃쎌슦 ?뺣━.
-    - '媛먯궗?⑸땲????1?λ쭔 ?좎?
-    - '異붽? ?뺣낫/臾몄쓽/?곕씫泥??뚯궗 ?뚭컻' 瑜??쒓굅
+    마지막에 감사합니다/Q&A가 여러 장 생기거나, 불필요한 엔딩이 붙는 경우 정리한다.
+    - '감사합니다'는 1장만 유지
+    - '추가 정보/문의/연락처/회사 소개' 슬라이드는 제거
     """
     bad_keywords = ["추가 정보", "문의", "연락처", "회사 소개", "contact", "thank you", "thanks"]
     thanks_idx: List[int] = []
@@ -542,12 +543,12 @@ def _trim_ending_slides(prs: Presentation) -> None:
         if "감사합니다" in t:
             thanks_idx.append(i)
 
-    # 媛먯궗?⑸땲?ㅺ? 2???댁긽?대㈃ 留덉?留?1?λ쭔 ?④?
+    # '감사합니다'가 2장 이상이면 마지막 1장만 유지
     if len(thanks_idx) > 1:
         for idx in reversed(thanks_idx[:-1]):
             _delete_slide(prs, idx)
 
-    # 留덉?留?履쎌뿉??bad ?ㅼ썙???щ씪?대뱶 ?쒓굅 (蹂댁닔?곸쑝濡? 留덉?留?5??踰붿쐞)
+    # 마지막 쪽 bad keyword 슬라이드 제거 (보수적으로 마지막 5장 범위)
     n = len(prs.slides)
     for idx in reversed(range(max(0, n - 5), n)):
         slide = prs.slides[idx]
@@ -557,7 +558,7 @@ def _trim_ending_slides(prs: Presentation) -> None:
                 txt += " " + (sh.text_frame.text or "")
         t = _norm(txt)
         if any(k.lower() in t.lower() for k in bad_keywords):
-            # ?? '媛먯궗?⑸땲?????④?
+            # 단 '감사합니다'는 유지
             if "감사합니다" in t:
                 continue
             _delete_slide(prs, idx)
@@ -586,14 +587,14 @@ def _remove_duplicate_text_shapes(prs: Presentation) -> int:
 
 def postprocess_diagrams(pptx_path: str, deck_json: Dict[str, Any], state: Optional[Dict[str, Any]] = None) -> str:
     """
-    Gamma 寃곌낵 PPTX ?꾩쿂由?
-    - ?쒖?/紐⑹감 媛뺤젣 ?ъ옉??(1~2踰??щ씪?대뱶)
-    - AI ?대?吏/placeholder ?쒓굅 (?? ???꾪몴/?ㅼ씠?닿렇?⑥? 蹂댁〈)
-    - ?붾뵫 ?щ씪?대뱶 ?뺣━
+    Gamma 결과 PPTX 후처리
+    - 표지/목차 강제 시작부 정리 (1~2번 슬라이드)
+    - AI 이미지/placeholder 제거 (단 표/다이어그램 그림은 보존)
+    - 엔딩 슬라이드 정리
     """
     prs = Presentation(pptx_path)
 
-    # ??deck_json 湲곕컲?쇰줈 "洹몃┝ 蹂댁〈?댁빞 ?섎뒗 ?щ씪?대뱶" 怨꾩궛
+    # deck_json 기반으로 "그림을 보존해야 하는 슬라이드" 계산
     keep_picture_slide_idxs = _slides_with_structured_visuals(deck_json)
     need_image_slide_idxs = _slides_need_generated_image(deck_json)
     deck_slides = (deck_json or {}).get("slides") or []
@@ -613,7 +614,7 @@ def postprocess_diagrams(pptx_path: str, deck_json: Dict[str, Any], state: Optio
         or ""
     )
 
-    # 1) ?쒖?/紐⑹감 ?ъ옉??(?좏깮)
+    # 1) 표지/목차 시작부 정리 (선택)
     if rewrite_cover and len(prs.slides) >= 1:
         cover_spec = deck_slides[0] if len(deck_slides) >= 1 and isinstance(deck_slides[0], dict) else {}
         if force_rewrite_cover or (not _slide_has_structured_spec(cover_spec)):
@@ -626,13 +627,13 @@ def postprocess_diagrams(pptx_path: str, deck_json: Dict[str, Any], state: Optio
         if force_rewrite_agenda and not _slide_has_structured_spec(agenda_spec):
             _write_agenda(prs.slides[1])
 
-    # 1.5) ?쒖?/留덉?留??щ씪?대뱶 ?됱긽 ?ъ씤??蹂닿컯 (?쒖? ?ъ옉?깊븷 ?뚮쭔)
+    # 1.5) 표지/마지막 슬라이드 색상 포인트 보강
     if rewrite_cover and len(prs.slides) >= 1:
         _decorate_cover_slide(prs.slides[0])
     if rewrite_cover and len(prs.slides) >= 1:
         _decorate_thanks_slide(prs.slides[-1])
 
-    # 2) AI image ?뺣━(placeholder???대?吏 ?쎌엯 ????щ씪?대뱶?먯꽌 ?좎?)
+    # 2) AI image 정리 (placeholder와 그림 삽입 전 대상만 우선 제거)
     _remove_visual_placeholders(
         prs,
         keep_picture_slide_idxs,
@@ -641,7 +642,7 @@ def postprocess_diagrams(pptx_path: str, deck_json: Dict[str, Any], state: Optio
     )
     prs.save(pptx_path)
 
-    # 2.2) placeholder ?곗꽑 ?대?吏 ?쎌엯
+    # 2.2) placeholder 정리 후 이미지 삽입
     try:
         image_paths = maybe_insert_generated_diagrams(pptx_path, deck_json, state=state)
         if state is not None and image_paths:
@@ -650,7 +651,7 @@ def postprocess_diagrams(pptx_path: str, deck_json: Dict[str, Any], state: Optio
         print(f"[WARN] diagram image generation skipped: {e}")
     prs = Presentation(pptx_path)
 
-    # 2.3) ?⑥? image placeholder ?뺣━ (?앹꽦??洹몃┝? 蹂댁〈)
+    # 2.3) 잔여 image placeholder 정리 (생성된 그림은 보존)
     _remove_visual_placeholders(
         prs,
         keep_picture_slide_idxs=keep_picture_slide_idxs.union(need_image_slide_idxs),
